@@ -41,17 +41,10 @@ def render_code_examples_tab(mock_data):
 def render_configuration_tab(mock_data, form_data):
     """Render configuration tab"""
     st.subheader("API Configuration")
-    config_col1, config_col2 = st.columns(2)
     
-    with config_col1:
-        st.metric("Method", mock_data["method"])
-        st.metric("Rate Limit", mock_data["rate_limit"])
-        st.metric("Update Frequency", form_data['update_frequency'])
-    
-    with config_col2:
-        st.metric("Format", form_data['api_format'])
-        st.metric("Authentication", "API Key")
-        st.metric("Status", "Active ✓")
+    st.metric("Method", mock_data["method"])
+    st.metric("Rate Limit", mock_data["rate_limit"])
+    st.metric("Update Frequency", form_data['update_frequency'])
 
 def render_documentation_tab(mock_data):
     """Render documentation tab"""
