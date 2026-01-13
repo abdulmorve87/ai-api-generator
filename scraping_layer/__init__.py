@@ -2,8 +2,7 @@
 Universal Scraping Layer
 
 A comprehensive scraping system that handles both static and dynamic websites
-with AI-generated script execution, security sandboxing, and intelligent
-strategy selection.
+with direct script execution and intelligent strategy selection.
 """
 
 __version__ = "1.0.0"
@@ -15,9 +14,15 @@ from .models import ScriptConfig, ScrapingResult, WebsiteAnalysis
 # Import engine (now that dependencies are resolved)
 from .engine import ScrapingEngine
 
+# Import script execution layer
+from .script_execution import ScrapingScript, ScriptExecutor, ScriptResult
+
 __all__ = [
     "ScrapingEngine",
     "ScriptConfig", 
     "ScrapingResult",
-    "WebsiteAnalysis"
+    "WebsiteAnalysis",
+    "ScrapingScript",
+    "ScriptExecutor", 
+    "ScriptResult"
 ]
