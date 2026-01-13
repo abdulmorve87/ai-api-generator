@@ -1,2 +1,20 @@
 streamlit==1.31.0
 requests==2.31.0
+
+# Universal Scraping Layer Dependencies
+playwright>=1.40.0
+aiohttp>=3.9.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+cssselect>=1.2.0
+html5lib>=1.1
+psutil>=5.9.0
+redis>=5.0.0
+pyyaml>=6.0
+
+# Testing Dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+hypothesis>=6.88.0
+pytest-mock>=3.11.0
+pytest-cov>=4.1.0
