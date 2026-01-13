@@ -9,6 +9,9 @@ The Universal Scraping Layer is now ready for testing! You can run the scraper w
 ### Basic Usage
 
 ```bash
+# Navigate to the examples directory
+cd scraping_layer/examples
+
 # Test with a URL (extracts basic page info)
 python test_scraper.py https://example.com
 
@@ -95,6 +98,7 @@ Item 1:
 For detailed debugging, use the debug script:
 
 ```bash
+cd scraping_layer/examples
 python debug_scraper.py
 ```
 
@@ -109,8 +113,47 @@ The scraping layer is designed to integrate with the main AI API Generator app. 
 3. The scraping layer will execute the plan and return clean data
 4. Data will be served via automatically generated API endpoints
 
+## Project Structure
+
+```
+scraping_layer/
+├── __init__.py              # Main package exports
+├── models.py                # Data models and types
+├── interfaces.py            # Abstract interfaces
+├── engine.py                # Main orchestrator
+├── config.py                # Configuration management
+├── utils/
+│   ├── __init__.py
+│   └── logging.py           # Logging utilities
+├── examples/
+│   ├── test_scraper.py      # Interactive test script
+│   └── debug_scraper.py     # Debug and diagnostics
+└── docs/
+    └── USAGE.md             # This file
+```
+
+## Dependencies
+
+The scraping layer requires these packages (all included in main `requirements.txt`):
+
+```
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+playwright>=1.40.0
+aiohttp>=3.9.0
+```
+
+Install with:
+
+```bash
+# From project root
+pip install -r requirements.txt
+```
+
 ## Need Help?
 
 - Check the console output for detailed step-by-step information
 - Use the debug script to see what's happening internally
 - All errors are logged with context for easy troubleshooting
+- Review the examples in `scraping_layer/examples/` for usage patterns

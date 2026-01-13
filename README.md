@@ -1,0 +1,179 @@
+# AI-Powered API Generator
+
+An automated API generation platform that bridges the gap between publicly available data and developer-ready API endpoints. Transform natural language requirements into production-ready APIs with intelligent web scraping.
+
+## 🚀 Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Test the scraping layer
+python test_scraper.py https://example.com title=h1 description=p
+```
+
+## 📋 Features
+
+### ✅ Universal Scraping Layer (Task 1 Complete)
+
+- **Static website scraping** - HTTP requests + BeautifulSoup
+- **CSS selector support** - Extract specific elements
+- **Data cleaning** - HTML entity decoding, normalization
+- **Error handling** - Graceful failure with detailed logging
+- **Performance metrics** - Timing and extraction statistics
+- **Configuration system** - Environment-based settings
+- **Testing framework** - Property-based testing with Hypothesis
+
+### 🚧 Upcoming Features
+
+- **Dynamic website scraping** - JavaScript-rendered content (Playwright)
+- **AI script generation** - Natural language to scraping scripts
+- **API endpoint generation** - Automatic REST API creation
+- **Caching system** - Redis/memory-based caching
+- **Anti-bot handling** - User agent rotation, delays
+- **Authentication** - Rate limiting and API keys
+
+## 🏗️ Architecture
+
+```
+AI API Generator
+├── 🌐 Streamlit UI          # User interface
+├── 🤖 AI Processing Layer   # Requirement analysis + code generation
+├── 🕷️ Universal Scraping Layer # Web scraping engine
+├── 📊 Data Transformation   # Clean and validate data
+└── 🚀 FastAPI Backend       # Serve generated endpoints
+```
+
+## 📁 Project Structure
+
+```
+├── 📄 README.md                    # This file
+├── 📄 requirements.txt             # All dependencies
+├── 📄 test_scraper.py              # Quick test script
+├── 📄 app.py                       # Main Streamlit app
+├── 🕷️ scraping_layer/              # Universal Scraping Layer
+│   ├── 📄 README.md                # Scraping layer docs
+│   ├── 📄 engine.py                # Main orchestrator
+│   ├── 📄 models.py                # Data models
+│   ├── 📄 interfaces.py            # Abstract interfaces
+│   ├── 📄 config.py                # Configuration
+│   ├── 📁 examples/                # Test scripts
+│   ├── 📁 docs/                    # Documentation
+│   └── 📁 utils/                   # Utilities
+├── 🧪 tests/                       # Unit tests
+├── 📁 components/                  # UI components
+├── 📁 utils/                       # UI utilities
+└── 📁 data/                        # Mock data
+```
+
+## 🧪 Testing the Scraper
+
+### Basic Usage
+
+```bash
+# Extract basic page info
+python test_scraper.py https://example.com
+
+# Extract specific fields
+python test_scraper.py https://example.com title=h1 description=p
+
+# Test with different sites
+python test_scraper.py https://httpbin.org/html title=h1 content=p
+```
+
+### Expected Output
+
+```
+🚀 Universal Scraping Layer Test
+Target URL: https://example.com
+Selectors: {'title': 'h1', 'description': 'p'}
+
+📊 SCRAPING RESULTS
+Success: True
+Items extracted: 1
+Strategy used: static
+Duration: 0.86 seconds
+
+📋 EXTRACTED DATA:
+Item 1:
+  title: Example Domain
+  description: This domain is for use in documentation...
+```
+
+## 🛠️ Development
+
+### Running the Main App
+
+```bash
+# Start the Streamlit UI
+streamlit run app.py
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run scraping layer tests specifically
+python -m pytest tests/test_setup.py -v
+```
+
+### Debug Mode
+
+```bash
+# Detailed scraping diagnostics
+python scraping_layer/examples/debug_scraper.py
+```
+
+## 📖 Documentation
+
+- **[Scraping Layer](scraping_layer/README.md)** - Universal scraping system
+- **[Usage Guide](scraping_layer/docs/USAGE.md)** - Detailed usage instructions
+- **[Examples](scraping_layer/examples/README.md)** - Example scripts
+- **[Original Spec](docs/kiro-spec.md)** - Project specification
+- **[Design Docs](.kiro/specs/universal-scraping-layer/)** - Architecture and tasks
+
+## 🔧 Configuration
+
+Configure via environment variables:
+
+```bash
+# Scraping settings
+export SCRAPING_MAX_EXECUTION_TIME=300
+export SCRAPING_MAX_MEMORY_MB=512
+export SCRAPING_LOG_LEVEL=INFO
+
+# Browser settings
+export SCRAPING_MAX_BROWSERS=5
+export SCRAPING_HEADLESS=true
+
+# Cache settings
+export SCRAPING_CACHE_BACKEND=memory
+export SCRAPING_CACHE_TTL=3600
+```
+
+## 🚦 Status
+
+**✅ Task 1: Project Setup & Static Scraping** - COMPLETE
+
+- Core interfaces and models
+- Configuration system
+- Logging framework
+- Static website scraping
+- Testing infrastructure
+
+**🚧 Next: Task 2** - Content Detector implementation
+
+## 🤝 How It Works
+
+1. **📝 User Input** - Describe data needs in natural language
+2. **🤖 AI Analysis** - Extract URLs, fields, and scraping strategy
+3. **🕷️ Web Scraping** - Execute scraping with appropriate strategy
+4. **🧹 Data Cleaning** - Normalize and validate extracted data
+5. **🚀 API Generation** - Create REST endpoints serving the data
+6. **📊 Monitoring** - Track performance and data quality
+
+## 📄 License
+
+Built for Hackathon 2025 | Powered by AI

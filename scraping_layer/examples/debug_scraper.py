@@ -4,8 +4,13 @@ Debug version of the scraper to test individual components.
 """
 
 import asyncio
+import os
+import sys
 import requests
 from bs4 import BeautifulSoup
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from scraping_layer.models import StaticScrapingConfig
 
