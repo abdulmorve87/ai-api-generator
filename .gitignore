@@ -64,3 +64,4 @@ htmlcov/
 cache/
 temp/
 sandbox/
+api_data.db
