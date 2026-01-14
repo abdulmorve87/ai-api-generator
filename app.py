@@ -7,6 +7,7 @@ from components.form import render_api_form
 from components.results import render_results_tabs, render_download_section
 from data.mock_data import load_mock_response
 from ai_integration import ai_integration
+from data.mock_data import generate_response
 
 # Configuration
 API_SERVER_URL = "http://localhost:8000"
@@ -161,6 +162,8 @@ if form_data['submitted']:
                     display_data = load_mock_response()
             else:
                 display_data = load_mock_response()
+            time.sleep(2)  # Simulate API call
+            mock_data = generate_response(form_data)
         
         # Render success message
         render_success_box()
