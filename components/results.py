@@ -97,4 +97,199 @@ def render_download_section(mock_data):
 
     with col3:
         readme = generate_readme(mock_data)
-        st.download_button("README.md", readme, "README.md")
+        st.download_button(
+            label="README.md",
+            data=readme,
+            file_name="README.md",
+            mime="text/markdown"
+        )
+
+
+# AI Response Generator UI Components
+
+def render_generated_response(response):
+    """
+    Display the AI-generated JSON response with formatting and actions.
+    
+    Args:
+        response: GeneratedResponse object from ai_layer
+    """
+    st.success("✅ API Response Generated Successfully!")
+    
+    # Display the generated JSON
+    st.subheader("Generated JSON Response")
+    st.json(response.data)
+    
+    # Action buttons
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Copy to clipboard button (using st.code for easy copying)
+        st.download_button(
+            label="📋 Copy JSON",
+            data=json.dumps(response.data, indent=2),
+            file_name="api_response.json",
+            mime="application/json",
+            help="Download the generated JSON response"
+        )
+    
+    with col2:
+        # Download button
+        st.download_button(
+            label="💾 Download JSON",
+            data=response.to_json(),
+            file_name="generated_api_response.json",
+            mime="application/json",
+            help="Download the complete response with metadata"
+        )
+    
+    # Display metadata in an expander
+    with st.expander("📊 Generation Metadata"):
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Model", response.metadata.model)
+        
+        with col2:
+            st.metric("Tokens Used", response.metadata.tokens_used)
+        
+        with col3:
+            st.metric("Generation Time", f"{response.metadata.generation_time_ms}ms")
+        
+        with col4:
+            st.metric("Timestamp", response.metadata.timestamp.strftime("%H:%M:%S"))
+        
+        # Show raw output for debugging
+        if st.checkbox("Show raw AI output"):
+            st.code(response.raw_output, language="json")
+
+
+def render_error(error):
+    """
+    Display error messages with appropriate styling and troubleshooting hints.
+    
+    Args:
+        error: Exception that occurred during generation
+    """
+    from ai_layer.exceptions import (
+        ConfigurationError,
+        DeepSeekAuthError,
+        DeepSeekRateLimitError,
+        DeepSeekConnectionError,
+        ValidationError,
+        GenerationError,
+        DeepSeekAPIError
+    )
+    
+    # Determine error type and customize message
+    if isinstance(error, ConfigurationError):
+        st.error("⚙️ Configuration Error")
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        **How to fix:**
+        1. Create a `.env` file in your project root
+        2. Add your DeepSeek API key: `DEEPSEEK_API_KEY=your_key_here`
+        3. Get your API key from [DeepSeek Platform](https://platform.deepseek.com)
+        4. Restart the application
+        """)
+    
+    elif isinstance(error, DeepSeekAuthError):
+        st.error("🔐 Authentication Error")
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        **How to fix:**
+        1. Verify your API key is correct in the `.env` file
+        2. Check that the key hasn't expired
+        3. Get a new key from [DeepSeek Platform](https://platform.deepseek.com) if needed
+        """)
+    
+    elif isinstance(error, DeepSeekRateLimitError):
+        st.error("⏱️ Rate Limit Exceeded")
+        retry_after = getattr(error, 'retry_after', 60)
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        **How to fix:**
+        - Wait {retry_after} seconds before trying again
+        - Consider upgrading your API plan for higher limits
+        - Reduce the frequency of requests
+        """)
+    
+    elif isinstance(error, DeepSeekConnectionError):
+        st.error("🌐 Connection Error")
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        **How to fix:**
+        1. Check your internet connection
+        2. Verify you can access https://api.deepseek.com
+        3. Check if a firewall is blocking the connection
+        4. Try again in a few moments
+        """)
+    
+    elif isinstance(error, ValidationError):
+        st.error("❌ Validation Error")
+        field = getattr(error, 'field', None)
+        if field:
+            st.markdown(f"""
+            **Field:** `{field}`
+            
+            **Error:** {str(error)}
+            
+            **How to fix:**
+            - Check that all required fields are filled
+            - Ensure JSON structure is valid (if provided)
+            - Verify field names are on separate lines
+            """)
+        else:
+            st.markdown(f"""
+            **Error:** {str(error)}
+            
+            **How to fix:**
+            - Review your input and correct any validation errors
+            - Ensure all required fields are provided
+            """)
+    
+    elif isinstance(error, GenerationError):
+        st.error("🤖 Generation Error")
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        **How to fix:**
+        - Try simplifying your requirements
+        - Provide a clearer structure example
+        - Reduce the number of fields requested
+        - Try again (AI responses can vary)
+        """)
+    
+    elif isinstance(error, DeepSeekAPIError):
+        st.error("🔧 API Error")
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        **How to fix:**
+        - The DeepSeek service may be temporarily unavailable
+        - Try again in a few moments
+        - Check [DeepSeek Status](https://status.deepseek.com) for service updates
+        """)
+    
+    else:
+        st.error("❌ Unexpected Error")
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        **Type:** {type(error).__name__}
+        
+        **How to fix:**
+        - Try again
+        - If the problem persists, please report this issue
+        """)
+    
+    # Show detailed error in expander for debugging
+    with st.expander("🔍 Technical Details"):
+        st.code(f"{type(error).__name__}: {str(error)}")
+        if hasattr(error, '__traceback__'):
+            import traceback
+            st.code(traceback.format_exc())
