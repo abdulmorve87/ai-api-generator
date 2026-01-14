@@ -49,3 +49,7 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 api_data.db
+
+# Environment variables
+.env
+.env.local

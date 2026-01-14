@@ -1,16 +1,17 @@
 import streamlit as st
 import time
 import requests
+import os
 from utils.ui_components import render_header, render_success_box, render_endpoint_box
 from utils.styles import load_custom_css
 from components.form import render_api_form
 from components.results import render_results_tabs, render_download_section
-from data.mock_data import load_mock_response
-from ai_integration import ai_integration
 from data.mock_data import generate_response
+from ai_integration import ai_integration
 
 # Configuration
 API_SERVER_URL = "http://localhost:8000"
+AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")
 
 def check_api_server():
     """Check if API server is running"""
@@ -136,50 +137,88 @@ if form_data['submitted']:
     else:
         # Show loading state
         with st.spinner("🤖 AI is analyzing your requirements and generating the API..."):
-            time.sleep(2)  # Simulate processing time
+            # Call colleague's AI layer to generate API response
+            ai_generated_data = generate_response(form_data)
             
-            # In a real implementation, this would call your college's AI layer
-            # For now, we'll use mock data but show the integration structure
-            if server_status:
-                # Try to get real data from existing APIs first
-                try:
-                    apis_response = requests.get(f"{API_SERVER_URL}/apis")
-                    if apis_response.status_code == 200:
-                        apis_data = apis_response.json()
-                        if apis_data.get('apis'):
-                            # Use the first available API as an example
-                            first_api = apis_data['apis'][0]
-                            api_data = get_live_api_data(first_api['name'])
-                            if api_data:
-                                display_data = format_api_response_for_display(api_data, form_data)
-                            else:
-                                display_data = load_mock_response()
-                        else:
-                            display_data = load_mock_response()
-                    else:
-                        display_data = load_mock_response()
-                except:
-                    display_data = load_mock_response()
+            # Check if AI generation was successful
+            if ai_generated_data.get("status") == "error":
+                st.error(f"❌ AI Generation Error: {ai_generated_data.get('message', 'Unknown error')}")
+                st.code(ai_generated_data.get('raw', 'No raw output'), language="text")
             else:
-                display_data = load_mock_response()
-            time.sleep(2)  # Simulate API call
-            mock_data = generate_response(form_data)
+                # Extract data from AI response
+                endpoint = ai_generated_data.get("endpoint", "https://api.example.com/data")
+                api_name = endpoint.split("/")[-1].replace("-", "_")
+                
+                # Prepare data for API server
+                response_data = ai_generated_data.get("response", {})
+                data_items = response_data.get("data", [])
+                
+                # If data is a dict, convert to list
+                if isinstance(data_items, dict):
+                    data_items = [data_items]
+                
+                # Infer schema from data
+                if data_items and len(data_items) > 0:
+                    first_item = data_items[0]
+                    schema_properties = {}
+                    for key, value in first_item.items():
+                        if isinstance(value, int):
+                            schema_properties[key] = {"type": "integer", "description": key.replace("_", " ").title()}
+                        elif isinstance(value, float):
+                            schema_properties[key] = {"type": "number", "description": key.replace("_", " ").title()}
+                        elif isinstance(value, bool):
+                            schema_properties[key] = {"type": "boolean", "description": key.replace("_", " ").title()}
+                        elif isinstance(value, list):
+                            schema_properties[key] = {"type": "array", "description": key.replace("_", " ").title()}
+                        else:
+                            schema_properties[key] = {"type": "string", "description": key.replace("_", " ").title()}
+                    
+                    schema = {
+                        "type": "object",
+                        "properties": schema_properties
+                    }
+                else:
+                    schema = {"type": "object", "properties": {}}
+                
+                # Send to API server if it's running
+                if server_status:
+                    try:
+                        api_payload = {
+                            "api_name": api_name,
+                            "description": form_data.get('data_description', 'AI Generated API'),
+                            "data": data_items,
+                            "schema": schema,
+                            "data_source": f"AI Generated ({AI_PROVIDER})",
+                            "update_frequency": form_data.get('update_frequency', 'on-demand')
+                        }
+                        
+                        result = ai_integration.receive_ai_data(api_payload)
+                        
+                        if result["status"] == "success":
+                            st.success(f"✅ API created successfully: {result.get('api_endpoint', 'unknown')}")
+                            # Update endpoint to use the actual API server
+                            ai_generated_data["endpoint"] = f"{API_SERVER_URL}{result.get('api_endpoint', '')}"
+                        else:
+                            st.warning(f"⚠️ Could not store in API server: {result.get('message', 'Unknown error')}")
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not connect to API server: {e}")
         
         # Render success message
         render_success_box()
         
         # Display endpoint
         st.subheader("🔗 Your API Endpoint")
-        render_endpoint_box(display_data["endpoint"])
+        render_endpoint_box(ai_generated_data.get("endpoint", "https://api.example.com/data"))
         
-        # Show integration info
-        st.info("🔗 **Integration Ready**: This interface is ready to receive data from your college's AI layer via the `ai_integration.py` module.")
+        # Show AI provider info
+        ai_provider = os.getenv("AI_PROVIDER", "gemini")
+        st.info(f"🤖 **Generated by**: {ai_provider.title()} AI | **Stored in**: API Server Database")
         
         # Render results tabs
-        render_results_tabs(display_data, form_data)
+        render_results_tabs(ai_generated_data, form_data)
         
         # Render download section
-        render_download_section(display_data)
+        render_download_section(ai_generated_data)
 
 # Footer
 st.markdown("---")

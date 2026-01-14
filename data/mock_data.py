@@ -4,17 +4,24 @@ load_dotenv()
 import os
 import json
 from datetime import datetime
-from google import genai
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")  # gemini or deepseek
 
-# Gemini client
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+# Initialize Gemini client only if API key is provided
+gemini_client = None
+if GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_api_key_here":
+    try:
+        from google import genai
+        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+    except Exception as e:
+        print(f"Warning: Could not initialize Gemini client: {e}")
 
 
 def call_gemini(prompt):
+    if not gemini_client:
+        raise ValueError("Gemini API key not configured. Please set GEMINI_API_KEY in .env file")
     response = gemini_client.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt
@@ -23,6 +30,8 @@ def call_gemini(prompt):
 
 
 def call_deepseek(prompt):
+    if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+        raise ValueError("DeepSeek API key not configured. Please set DEEPSEEK_API_KEY in .env file")
     import requests
     url = "https://api.deepseek.com/v1/chat/completions"
     headers = {
