@@ -20,6 +20,7 @@ from .interfaces import (
 )
 
 from .engine import ScrapingEngine
+from .static_scraper import StaticScraper
 from .config import ScrapingConfig, get_config, set_config
 
 __all__ = [
@@ -36,8 +37,9 @@ __all__ = [
     'IScrapingEngine',
     'IStaticScraper',
     
-    # Engine
+    # Implementations
     'ScrapingEngine',
+    'StaticScraper',
     
     # Config
     'ScrapingConfig',

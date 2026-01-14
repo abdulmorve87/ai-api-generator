@@ -1,5 +1,5 @@
 """
-Script Executor - Executes pre-written scraping scripts.
+Script Executor - Executes pre-written scraping scripts (Phase 1: Static Scraping).
 """
 
 import uuid
@@ -7,8 +7,8 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from .models import ScrapingScript, ScriptResult, ScriptMetadata, ScriptStatus
-from ..models import ScriptConfig, BrowserRequirements
+from .models import ScrapingScript, ScriptResult, ScriptMetadata
+from ..models import ScriptConfig
 from ..engine import ScrapingEngine
 
 
@@ -29,11 +29,14 @@ class ScriptExecutor:
         
         self.logger.info(f"Executing script '{script.name}' (ID: {script.script_id})")
         self.logger.info(f"Target URL: {script.url}")
-        self.logger.info(f"Strategy: {script.strategy.value}")
         
         try:
             # Convert ScrapingScript to ScriptConfig
-            script_config = self._convert_to_script_config(script)
+            script_config = ScriptConfig(
+                url=script.url,
+                selectors=script.selectors,
+                timeout=script.timeout
+            )
             
             # Execute scraping using the engine
             self.logger.info("Starting scraping operation...")
@@ -65,16 +68,6 @@ class ScriptExecutor:
                 total_items=len(scraping_result.data),
                 execution_time=execution_time
             )
-            
-            # Validate expected fields if specified
-            if script.expected_fields and scraping_result.data:
-                missing_fields = self._validate_expected_fields(
-                    scraping_result.data, script.expected_fields
-                )
-                if missing_fields:
-                    result.warnings.append(
-                        f"Missing expected fields: {', '.join(missing_fields)}"
-                    )
             
             # Store in history
             self.execution_history[execution_id] = result
@@ -120,43 +113,6 @@ class ScriptExecutor:
             self.execution_history[execution_id] = result
             return result
     
-    def _convert_to_script_config(self, script: ScrapingScript) -> ScriptConfig:
-        """Convert ScrapingScript to ScriptConfig for the engine."""
-        
-        return ScriptConfig(
-            url=script.url,
-            script_type=script.strategy,
-            selectors=script.selectors,
-            pagination=script.pagination,
-            interactions=script.interactions,
-            timeout=script.timeout,
-            cache_ttl=0,  # No caching for direct script execution
-            browser_requirements=BrowserRequirements(
-                headless=True,
-                javascript_enabled=script.strategy.value != 'static'
-            )
-        )
-    
-    def _validate_expected_fields(
-        self, 
-        data: List[Dict[str, Any]], 
-        expected_fields: List[str]
-    ) -> List[str]:
-        """Validate that extracted data contains expected fields."""
-        
-        if not data:
-            return expected_fields
-        
-        # Check first item for expected fields
-        first_item = data[0]
-        missing_fields = []
-        
-        for field in expected_fields:
-            if field not in first_item:
-                missing_fields.append(field)
-        
-        return missing_fields
-    
     def get_execution_history(self, script_id: Optional[str] = None) -> List[ScriptResult]:
         """Get execution history, optionally filtered by script ID."""
         
@@ -172,18 +128,3 @@ class ScriptExecutor:
         """Get a specific execution result by ID."""
         
         return self.execution_history.get(execution_id)
-    
-    def clear_history(self, older_than_hours: int = 24):
-        """Clear execution history older than specified hours."""
-        
-        cutoff_time = datetime.now().timestamp() - (older_than_hours * 3600)
-        
-        to_remove = []
-        for execution_id, result in self.execution_history.items():
-            if result.metadata.timestamp.timestamp() < cutoff_time:
-                to_remove.append(execution_id)
-        
-        for execution_id in to_remove:
-            del self.execution_history[execution_id]
-        
-        self.logger.info(f"Cleared {len(to_remove)} old execution records")
