@@ -1,21 +1,12 @@
 """
-Data models for script execution layer.
+Data models for script execution layer (Phase 1: Static Scraping).
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime
-from enum import Enum
 
-from ..models import ScrapingStrategy, InteractionStep, PaginationConfig
-
-
-class ScriptStatus(Enum):
-    """Status of script execution."""
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
+from ..models import ScrapingStrategy
 
 
 @dataclass
@@ -29,9 +20,6 @@ class ScrapingScript:
     selectors: Dict[str, str]
     
     # Optional configurations
-    interactions: List[InteractionStep] = field(default_factory=list)
-    pagination: Optional[PaginationConfig] = None
-    expected_fields: List[str] = field(default_factory=list)
     timeout: int = 30
     
     # Metadata
