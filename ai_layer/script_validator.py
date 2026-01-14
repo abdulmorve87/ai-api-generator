@@ -205,12 +205,14 @@ class ScriptValidator:
             if not target_function:
                 return False, f"Function '{self.EXPECTED_FUNCTION_NAME}' not found"
             
-            # Check function has at least one parameter (url)
-            if len(target_function.args.args) < 1:
+            # Check function has at least one parameter
+            all_args = target_function.args.args
+            
+            if len(all_args) < 1:
                 return False, f"Function '{self.EXPECTED_FUNCTION_NAME}' must accept at least 'url' parameter"
             
-            # Check first parameter is named 'url'
-            first_param = target_function.args.args[0].arg
+            # Check first parameter is named 'url' (single URL for framework design)
+            first_param = all_args[0].arg
             if first_param != 'url':
                 return False, f"First parameter should be 'url', found '{first_param}'"
             

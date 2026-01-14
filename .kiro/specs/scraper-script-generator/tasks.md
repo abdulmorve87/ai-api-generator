@@ -19,7 +19,7 @@ This implementation plan breaks down the Scraper Script Generator feature into d
   - Test exception raising and error messages
   - _Requirements: 2.5, 4.5_
 
-- [ ] 2. Implement Script Validator component
+- [x] 2. Implement Script Validator component
 
   - [x] 2.1 Create `ai_layer/script_validator.py` with ScriptValidator class
 
@@ -27,7 +27,7 @@ This implementation plan breaks down the Scraper Script Generator feature into d
     - Implement `check_syntax()` using Python's compile() function
     - Implement `check_imports()` to verify bs4 and requests are imported
     - Implement `check_forbidden_operations()` to scan for dangerous functions
-    - Implement `check_function_signature()` to verify main function exists
+    - Implement `check_function_signature()` to verify main function exists with `urls: List[str]` signature (updated for multi-source)
     - _Requirements: 4.1, 4.3, 4.4, 4.5_
 
   - [ ]\* 2.2 Write property test for syntax validation
@@ -50,16 +50,18 @@ This implementation plan breaks down the Scraper Script Generator feature into d
     - Test scripts with safe operations pass validation
     - _Requirements: 4.1_
 
-- [ ] 3. Implement Script Prompt Builder component
+- [x] 3. Implement Script Prompt Builder component
 
   - [x] 3.1 Create `ai_layer/script_prompt_builder.py` with ScriptPromptBuilder class
 
     - Define SYSTEM_PROMPT constant with script generation instructions
     - Implement `build_script_prompt()` method
     - Include scraping layer configuration (timeout, user-agent) in prompt
-    - Include required libraries (BeautifulSoup4, requests) in prompt
-    - Include expected function signature and return format
-    - Include user requirements (data description, URL, fields, structure)
+    - Include required libraries (BeautifulSoup4, requests, lxml parser) in prompt
+    - Include expected function signature `scrape_data(urls: List[str])` for multi-source scraping
+    - Include user requirements (data description, optional URLs, fields, structure)
+    - Support AI-suggested URLs when user doesn't provide data sources
+    - Prioritize user-provided URLs over AI suggestions
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
 
   - [ ]\* 3.2 Write property test for prompt completeness
