@@ -1,107 +1,115 @@
-from dotenv import load_dotenv
-load_dotenv()
+"""
+Mock data generator using AI Layer (DeepSeek).
+This module integrates with the ai_layer package for generating API responses.
+"""
 
 import os
+import logging
+
+# Fix SSL certificate issues on Windows (PostgreSQL, Google Cloud SDK interference)
+for var in ['SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE']:
+    if var in os.environ:
+        del os.environ[var]
+
+from ai_layer import (
+    DeepSeekConfig,
+    DeepSeekClient,
+    AIResponseGenerator,
+    ConfigurationError,
+    GenerationError
+)
 import json
-from datetime import datetime
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")  # gemini or deepseek
+logger = logging.getLogger(__name__)
 
-# Initialize Gemini client only if API key is provided
-gemini_client = None
-if GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_api_key_here":
-    try:
-        from google import genai
-        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-    except Exception as e:
-        print(f"Warning: Could not initialize Gemini client: {e}")
+# Initialize AI generator (cached)
+_ai_generator = None
 
-
-def call_gemini(prompt):
-    if not gemini_client:
-        raise ValueError("Gemini API key not configured. Please set GEMINI_API_KEY in .env file")
-    response = gemini_client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
-    return response.text
-
-
-def call_deepseek(prompt):
-    if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
-        raise ValueError("DeepSeek API key not configured. Please set DEEPSEEK_API_KEY in .env file")
-    import requests
-    url = "https://api.deepseek.com/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": "You generate structured JSON APIs from user needs."},
-            {"role": "user", "content": prompt}
-        ]
-    }
-    r = requests.post(url, headers=headers, json=payload, timeout=30)
-    r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+def get_ai_generator():
+    """Get or initialize the AI generator."""
+    global _ai_generator
+    if _ai_generator is None:
+        try:
+            config = DeepSeekConfig.from_env()
+            client = DeepSeekClient(config.api_key, config.base_url)
+            _ai_generator = AIResponseGenerator(client)
+        except ConfigurationError as e:
+            logger.error(f"AI configuration error: {e}")
+            raise
+    return _ai_generator
 
 
 def generate_response(form_data):
-    user_query = form_data.get("data_description", "")
-    fields = form_data.get("desired_fields", "")
-
-    prompt = f"""
-User wants public data as API.
-
-Query: {user_query}
-Fields needed: {fields}
-
-Rules:
-- Return ONLY raw JSON.
-- Do NOT wrap in quotes.
-- Do NOT use markdown.
-- Do NOT add explanations.
-
-Format:
-{{
-  "endpoint": "...",
-  "method": "GET",
-  "response": {{
-    "status": "success",
-    "data": {{ ... }},
-    "generated_at": "..."
-  }}
-}}
-"""
-
-
-    if AI_PROVIDER == "deepseek":
-        ai_text = call_deepseek(prompt)
-    else:
-        ai_text = call_gemini(prompt)
-
-    ai_text = ai_text.strip()
-
-    # Remove markdown fences
-    if ai_text.startswith("```"):
-        ai_text = ai_text.replace("```json", "").replace("```", "").strip()
-
-    # If JSON is wrapped in quotes, unwrap it
-    if ai_text.startswith('"') and ai_text.endswith('"'):
-        ai_text = ai_text[1:-1]
-
+    """
+    Generate API response using DeepSeek AI Layer.
+    
+    Args:
+        form_data: Dictionary containing:
+            - data_description: str (required)
+            - data_source: str (optional)
+            - desired_fields: str (optional)
+            - response_structure: str (optional)
+            - update_frequency: str (required)
+    
+    Returns:
+        Dictionary with generated API response data
+    """
     try:
+        # Get AI generator
+        generator = get_ai_generator()
         
-        result = json.loads(ai_text)        
-        return result
-    except Exception as e:
+        # Generate response using AI layer
+        response = generator.generate_response(form_data)
+        
+        # Format response for UI display
+        data = response.data
+        
+        # Extract endpoint name from data description
+        api_name = form_data.get('data_description', 'data').lower()
+        api_name = ''.join(c if c.isalnum() else '_' for c in api_name)[:50]
+        
+        return {
+            "endpoint": f"https://api.example.com/{api_name}",
+            "method": "GET",
+            "response": data,
+            "metadata": {
+                "model": response.metadata.model,
+                "generation_time_ms": response.metadata.generation_time_ms,
+                "timestamp": response.metadata.timestamp.isoformat()
+            }
+        }
+        
+    except ConfigurationError as e:
         return {
             "status": "error",
-            "message": "AI did not return valid JSON",
-            "raw": ai_text,
-        "parse_error": str(e)
+            "message": f"Configuration error: {str(e)}",
+            "raw": ""
+        }
+    except GenerationError as e:
+        return {
+            "status": "error",
+            "message": f"Generation error: {str(e)}",
+            "raw": ""
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error in generate_response: {e}")
+        return {
+            "status": "error",
+            "message": f"Unexpected error: {str(e)}",
+            "raw": ""
+        }
+
+
+def load_mock_response():
+    """Load a fallback mock response for testing."""
+    return {
+        "endpoint": "https://api.example.com/sample",
+        "method": "GET",
+        "response": {
+            "status": "success",
+            "data": [
+                {"id": 1, "name": "Sample Item 1"},
+                {"id": 2, "name": "Sample Item 2"}
+            ]
+        }
     }

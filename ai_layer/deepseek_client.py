@@ -47,6 +47,21 @@ class DeepSeekClient:
             'Authorization': f'Bearer {self.api_key}',
             'Content-Type': 'application/json'
         })
+        
+        # Fix SSL certificate issues on Windows
+        # Try to use certifi's certificate bundle
+        try:
+            import certifi
+            import os
+            cert_path = certifi.where()
+            if os.path.exists(cert_path):
+                self.session.verify = cert_path
+            else:
+                # If certifi path doesn't exist, use True (default verification)
+                self.session.verify = True
+        except (ImportError, Exception):
+            # If certifi is not available or fails, use default verification
+            self.session.verify = True
     
     def _calculate_retry_delay(self, attempt: int) -> float:
         """
