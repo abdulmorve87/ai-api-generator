@@ -8,11 +8,29 @@ An automated API generation platform that bridges the gap between publicly avail
 # Install dependencies
 pip install -r requirements.txt
 
+# Set up DeepSeek API key (required for AI features)
+export DEEPSEEK_API_KEY=your_api_key_here
+
+# Or create a .env file
+echo "DEEPSEEK_API_KEY=your_api_key_here" > .env
+
+# Run the application
+streamlit run app.py
+
 # Test the scraping layer
 python test_scraper.py https://example.com title=h1 description=p
 ```
 
 ## 📋 Features
+
+### ✅ AI Response Generator (Phase 1 Complete)
+
+- **DeepSeek AI Integration** - Generate realistic API responses using AI
+- **Form Input Processing** - Convert user requirements to AI prompts
+- **JSON Response Generation** - Create structured API responses
+- **Response Validation** - Ensure valid JSON output
+- **Error Handling** - Clear error messages with troubleshooting hints
+- **UI Integration** - Display generated responses with metadata
 
 ### ✅ Universal Scraping Layer (Task 1 Complete)
 
@@ -49,8 +67,19 @@ AI API Generator
 ```
 ├── 📄 README.md                    # This file
 ├── 📄 requirements.txt             # All dependencies
+├── 📄 .env                         # Environment variables (create this)
 ├── 📄 test_scraper.py              # Quick test script
 ├── 📄 app.py                       # Main Streamlit app
+├── 🤖 ai_layer/                    # AI Response Generator
+│   ├── 📄 __init__.py              # Module exports
+│   ├── 📄 config.py                # Configuration management
+│   ├── 📄 deepseek_client.py      # DeepSeek API client
+│   ├── 📄 response_generator.py   # Main orchestrator
+│   ├── 📄 prompt_builder.py       # Prompt construction
+│   ├── 📄 input_processor.py      # Form input processing
+│   ├── 📄 response_validator.py   # JSON validation
+│   ├── 📄 models.py                # Data models
+│   └── 📄 exceptions.py            # Custom exceptions
 ├── 🕷️ scraping_layer/              # Universal Scraping Layer
 │   ├── 📄 README.md                # Scraping layer docs
 │   ├── 📄 engine.py                # Main orchestrator
@@ -136,7 +165,22 @@ python scraping_layer/examples/debug_scraper.py
 
 ## 🔧 Configuration
 
-Configure via environment variables:
+Configure via environment variables or `.env` file:
+
+### AI Layer Configuration
+
+```bash
+# Required: DeepSeek API key
+export DEEPSEEK_API_KEY=your_api_key_here
+
+# Optional: DeepSeek API settings
+export DEEPSEEK_BASE_URL=https://api.deepseek.com  # Default
+export DEEPSEEK_MODEL=deepseek-chat                # Default
+export DEEPSEEK_TEMPERATURE=0.7                    # Default (0.0-1.0)
+export DEEPSEEK_MAX_TOKENS=2000                    # Default
+```
+
+### Scraping Layer Configuration
 
 ```bash
 # Scraping settings
@@ -152,6 +196,40 @@ export SCRAPING_HEADLESS=true
 export SCRAPING_CACHE_BACKEND=memory
 export SCRAPING_CACHE_TTL=3600
 ```
+
+### Getting Your DeepSeek API Key
+
+1. Visit [DeepSeek Platform](https://platform.deepseek.com)
+2. Sign up or log in to your account
+3. Navigate to API Keys section
+4. Click "Generate New Key"
+5. Copy the key and add it to your `.env` file
+
+### Troubleshooting
+
+**Configuration Error: DEEPSEEK_API_KEY not found**
+
+- Ensure you've created a `.env` file in the project root
+- Verify the API key is correctly set: `DEEPSEEK_API_KEY=sk-...`
+- Restart the application after adding the key
+
+**Authentication Failed**
+
+- Verify your API key is correct and hasn't expired
+- Check that you haven't exceeded your API quota
+- Get a new key from the DeepSeek platform if needed
+
+**Rate Limit Exceeded**
+
+- Wait for the specified retry period
+- Consider upgrading your API plan for higher limits
+- Reduce the frequency of requests
+
+**Connection Error**
+
+- Check your internet connection
+- Verify you can access https://api.deepseek.com
+- Check if a firewall is blocking the connection
 
 ## 🚦 Status
 
