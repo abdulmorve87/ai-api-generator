@@ -24,6 +24,7 @@ class DeepSeekClient:
     MAX_RETRIES = 3
     BASE_DELAY = 1.0  # seconds
     MAX_DELAY = 30.0  # seconds
+    REQUEST_TIMEOUT = 60  # seconds - increased for larger responses
     
     def __init__(self, api_key: str, base_url: str = "https://api.deepseek.com"):
         """
@@ -101,7 +102,7 @@ class DeepSeekClient:
         
         for attempt in range(self.MAX_RETRIES):
             try:
-                response = self.session.post(url, json=payload, timeout=30)
+                response = self.session.post(url, json=payload, timeout=self.REQUEST_TIMEOUT)
                 
                 # Handle different HTTP status codes
                 if response.status_code == 200:

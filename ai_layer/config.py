@@ -25,8 +25,8 @@ class DeepSeekConfig:
     api_key: str
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-chat"
-    temperature: float = 0.7
-    max_tokens: int = 2000
+    temperature: float = 0.3  # Lower for faster, more consistent output
+    max_tokens: int = 8000  # Increased for larger datasets
     
     @classmethod
     def from_env(cls) -> 'DeepSeekConfig':

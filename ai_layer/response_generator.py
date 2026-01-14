@@ -33,8 +33,8 @@ class AIResponseGenerator:
         self,
         form_input: Dict[str, Any],
         model: str = "deepseek-chat",
-        temperature: float = 0.7,
-        max_tokens: int = 2000
+        temperature: float = 0.3,  # Lower for faster, more consistent output
+        max_tokens: int = 8000  # Increased for larger datasets
     ) -> GeneratedResponse:
         """
         Generate a JSON API response from form inputs.
