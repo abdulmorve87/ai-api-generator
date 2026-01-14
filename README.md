@@ -138,6 +138,27 @@ Item 1:
 streamlit run app.py
 ```
 
+## 🧪 Testing
+
+### AI Layer Tests
+
+All AI layer tests are located in `ai_layer/test/` directory.
+
+**Quick Test:**
+
+```bash
+# Test 10-15 fields feature (recommended)
+python -m ai_layer.test.test_10_15_fields
+
+# Test connectivity
+python -m ai_layer.test.test_connection
+
+# Run all tests
+python -m ai_layer.test.run_all_tests
+```
+
+**Test Documentation:** See `ai_layer/test/README.md` for detailed test information.
+
 ### Running Tests
 
 ```bash
@@ -146,6 +167,9 @@ python -m pytest tests/ -v
 
 # Run scraping layer tests specifically
 python -m pytest tests/test_setup.py -v
+
+# Run AI layer tests
+python -m ai_layer.test.run_all_tests
 ```
 
 ### Debug Mode
