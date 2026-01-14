@@ -1,21 +1,33 @@
-# Universal Scraping Layer
+# Universal Scraping Layer (Phase 1)
 
-A comprehensive scraping system that handles both static and dynamic websites with direct script execution, intelligent strategy selection, and robust error handling.
+A simple, focused scraping system for extracting data from static HTML websites using HTTP requests and CSS selectors.
 
 ## 🚀 Quick Start
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+```python
+from scraping_layer import ScrapingEngine, ScriptConfig
+from scraping_layer.static_scraper import StaticScraper
 
-# Test basic scraping
-python test_scraper.py https://example.com title=h1 description=p
+# Create scraper and engine
+scraper = StaticScraper()
+engine = ScrapingEngine(static_scraper=scraper)
 
-# Test script execution layer
-python test_script_execution.py
+# Configure scraping
+config = ScriptConfig(
+    url="https://example.com",
+    selectors={
+        "title": "h1",
+        "description": "p"
+    }
+)
 
-# Run advanced script tests
-python scraping_layer/examples/test_script_execution_advanced.py --single
+# Execute scraping
+result = await engine.scrape(config)
+
+if result.success:
+    print(f"Extracted {len(result.data)} items")
+    for item in result.data:
+        print(item)
 ```
 
 ## 📁 Project Structure
@@ -23,175 +35,91 @@ python scraping_layer/examples/test_script_execution_advanced.py --single
 ```
 scraping_layer/
 ├── __init__.py              # Main package exports
-├── models.py                # Data models and types
-├── interfaces.py            # Abstract interfaces
-├── engine.py                # Main orchestrator
-├── config.py                # Configuration management
+├── models.py                # Data models (simplified)
+├── interfaces.py            # Abstract interfaces (simplified)
+├── engine.py                # Main orchestrator (simplified)
+├── config.py                # Configuration (simplified)
+├── static_scraper.py        # Static HTML scraper (TO BE IMPLEMENTED)
 ├── README.md                # This file
-├── script_execution/        # Direct script execution layer
+├── script_execution/        # Script execution wrapper
 │   ├── __init__.py
-│   ├── models.py            # Script execution models
-│   └── executor.py          # Script executor
-├── utils/
-│   ├── __init__.py
-│   └── logging.py           # Logging utilities
-├── examples/
-│   ├── README.md            # Examples documentation
-│   ├── test_scraper.py      # Interactive test script
-│   ├── debug_scraper.py     # Debug and diagnostics
-│   └── test_script_execution_advanced.py  # Advanced script tests
-└── docs/
-    ├── USAGE.md             # Detailed usage guide
-    └── SCRIPT_EXECUTION.md  # Script execution documentation
+│   ├── models.py
+│   └── executor.py
+└── utils/
+    ├── __init__.py
+    └── logging.py           # Logging utilities
 ```
 
-## ✨ Features
+## ✨ Features (Phase 1)
 
 ### Current Implementation
 
-- ✅ **Static website scraping** - HTTP requests + BeautifulSoup
+- ✅ **Static HTML scraping** - HTTP requests + BeautifulSoup
 - ✅ **CSS selector support** - Extract specific elements
-- ✅ **Script execution layer** - Direct execution of pre-written scripts
-- ✅ **Form-based script generation** - Convert form inputs to scraping scripts
-- ✅ **Data cleaning** - HTML entity decoding, whitespace normalization
-- ✅ **Error handling** - Graceful failure with detailed logging
-- ✅ **Performance metrics** - Timing and extraction statistics
-- ✅ **Execution history** - Track all scraping operations
-- ✅ **Configuration system** - Environment-based configuration
-- ✅ **Structured logging** - JSON logs with context
-- ✅ **Testing framework** - Comprehensive test coverage
+- ✅ **Simple configuration** - URL + selectors + timeout
+- ✅ **Structured results** - ScrapingResult with metadata
+- ✅ **Basic error handling** - Try/catch with error reporting
 
-### Upcoming Features
+### Not Implemented (Future Phases)
 
-- 🚧 **Dynamic website scraping** - Playwright browser automation
-- 🚧 **Content detection** - Framework identification
-- 🚧 **Anti-bot handling** - User agent rotation, delays
-- 🚧 **Caching system** - Redis/memory-based caching
-- 🚧 **Browser management** - Instance pooling and cleanup
-
-## 🧪 Testing
-
-```bash
-# Test basic scraping functionality
-python test_scraper.py https://example.com
-
-# Test script execution layer (form-based flow)
-python test_script_execution.py
-
-# Run advanced script execution tests
-python scraping_layer/examples/test_script_execution_advanced.py
-
-# Run single quick test
-python scraping_layer/examples/test_script_execution_advanced.py --single
-
-# Run unit tests
-python -m pytest tests/ -v
-```
-
-## 📖 Documentation
-
-- **[Script Execution Guide](docs/SCRIPT_EXECUTION.md)** - Direct script execution documentation
-- **[Usage Guide](docs/USAGE.md)** - Detailed usage instructions
-- **[Examples](examples/README.md)** - Example scripts and patterns
-- **[Requirements](../docs/kiro-spec.md)** - Original project specification
+- ❌ **Dynamic scraping** - JavaScript-rendered content (Phase 3)
+- ❌ **Error retry logic** - Exponential backoff (Phase 2)
+- ❌ **Data cleaning** - HTML entity decoding (Phase 2)
+- ❌ **Caching** - Redis/memory-based caching (Phase 4)
+- ❌ **Browser automation** - Playwright integration (Phase 3)
 
 ## 🔧 Configuration
 
 The scraping layer uses environment variables for configuration:
 
 ```bash
-# Security settings
-export SCRAPING_MAX_EXECUTION_TIME=300
-export SCRAPING_MAX_MEMORY_MB=512
-
-# Browser settings
-export SCRAPING_MAX_BROWSERS=5
-export SCRAPING_HEADLESS=true
-
-# Cache settings
-export SCRAPING_CACHE_BACKEND=memory
-export SCRAPING_CACHE_TTL=3600
+# Network settings
+export SCRAPING_REQUEST_TIMEOUT=30
+export SCRAPING_USER_AGENT="Mozilla/5.0..."
 
 # Logging
 export SCRAPING_LOG_LEVEL=INFO
 ```
 
-## 🏗️ Architecture
-
-The system follows a layered architecture:
-
-1. **API Layer** - ScrapingEngine (main interface)
-2. **Detection Layer** - ContentDetector (website analysis)
-3. **Execution Layer** - StaticScraper, DynamicScraper
-4. **Support Services** - BrowserManager, CacheManager, ErrorHandler
-5. **Data Layer** - DataExtractor, validation, cleaning
-
-## 🤝 Integration
-
-The scraping layer integrates with form-based UIs and provides direct script execution:
-
-```python
-from scraping_layer.script_execution import ScrapingScript, ScriptExecutor
-from scraping_layer.models import ScrapingStrategy
-
-# Create script from form data
-script = ScrapingScript(
-    script_id="user_script_001",
-    name="User Generated Script",
-    description="Extract data based on user requirements",
-    url="https://example.com",
-    strategy=ScrapingStrategy.STATIC,
-    selectors={"title": "h1", "content": "p"},
-    expected_fields=["title", "content"]
-)
-
-# Execute script
-executor = ScriptExecutor(scraping_engine)
-result = await executor.execute_script(script)
-
-# Use extracted data
-if result.success:
-    data = result.data
-    # Serve via API endpoints or display in UI
-```
-
 ## 📋 Requirements
 
-All dependencies are listed in the main project `requirements.txt` file.
+```
+aiohttp>=3.9.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+```
 
-**Core dependencies:**
-
-- `requests` - HTTP client
-- `beautifulsoup4` - HTML parsing
-- `playwright` - Browser automation
-- `aiohttp` - Async HTTP
-- `pytest` - Testing framework
-
-Install all dependencies from the project root:
+## 🧪 Testing
 
 ```bash
-pip install -r requirements.txt
+# Run basic test (once implemented)
+python -m pytest tests/test_static_scraper.py -v
 ```
+
+## 🏗️ Architecture
+
+Simple two-layer architecture:
+
+1. **Scraping Engine** - Orchestrates operations
+2. **Static Scraper** - Fetches HTML and extracts data
 
 ## 🚦 Status
 
-**Script Execution Layer** ✅ **COMPLETE**
+**Phase 1** 🚧 **IN PROGRESS**
 
-- Direct script execution without AI generation
-- Form-based script creation
-- Comprehensive error handling and validation
-- Execution history tracking
-- Integration with existing scraping engine
+- ✅ Spec simplified
+- ✅ Models simplified
+- ✅ Interfaces simplified
+- ✅ Engine simplified
+- ✅ Config simplified
+- ⏳ StaticScraper implementation (NEXT)
 
-**Core Scraping Engine** ✅ **COMPLETE**
+**Next Steps:**
 
-- Static website scraping
-- CSS selector support
-- Data cleaning and validation
-- Performance metrics
-- Configuration system
-
-**Next Steps** - Dynamic scraping and browser automation
+- Implement StaticScraper class
+- Add HTTP fetching with aiohttp
+- Add BeautifulSoup extraction
+- Write basic tests
 
 ## 📄 License
 

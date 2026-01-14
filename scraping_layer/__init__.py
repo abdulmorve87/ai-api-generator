@@ -1,28 +1,48 @@
 """
-Universal Scraping Layer
+Universal Scraping Layer (Phase 1: Static Scraping)
 
-A comprehensive scraping system that handles both static and dynamic websites
-with direct script execution and intelligent strategy selection.
+A simple, focused scraping system for extracting data from static HTML websites.
 """
 
-__version__ = "1.0.0"
-__author__ = "AI API Generator Team"
+from .models import (
+    ScriptConfig,
+    ScrapingResult,
+    ScrapingStrategy,
+    StaticScrapingConfig,
+    ScrapingError,
+    ScrapingMetadata,
+    PerformanceMetrics
+)
 
-# Import core models first
-from .models import ScriptConfig, ScrapingResult, WebsiteAnalysis
+from .interfaces import (
+    IScrapingEngine,
+    IStaticScraper
+)
 
-# Import engine (now that dependencies are resolved)
 from .engine import ScrapingEngine
-
-# Import script execution layer
-from .script_execution import ScrapingScript, ScriptExecutor, ScriptResult
+from .config import ScrapingConfig, get_config, set_config
 
 __all__ = [
-    "ScrapingEngine",
-    "ScriptConfig", 
-    "ScrapingResult",
-    "WebsiteAnalysis",
-    "ScrapingScript",
-    "ScriptExecutor", 
-    "ScriptResult"
+    # Models
+    'ScriptConfig',
+    'ScrapingResult',
+    'ScrapingStrategy',
+    'StaticScrapingConfig',
+    'ScrapingError',
+    'ScrapingMetadata',
+    'PerformanceMetrics',
+    
+    # Interfaces
+    'IScrapingEngine',
+    'IStaticScraper',
+    
+    # Engine
+    'ScrapingEngine',
+    
+    # Config
+    'ScrapingConfig',
+    'get_config',
+    'set_config',
 ]
+
+__version__ = '0.1.0-phase1'
