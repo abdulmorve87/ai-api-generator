@@ -16,8 +16,10 @@ from ai_layer import (
     DeepSeekConfig,
     DeepSeekClient,
     AIResponseGenerator,
+    ScraperScriptGenerator,
     ConfigurationError
 )
+from scraping_layer.config import ScrapingConfig
 
 # Page configuration
 st.set_page_config(
@@ -31,17 +33,22 @@ load_custom_css()
 
 # Initialize AI Layer (with error handling for missing API key)
 @st.cache_resource
-def initialize_ai_generator():
-    """Initialize the AI Response Generator with configuration."""
+def initialize_ai_components():
+    """Initialize the AI Response Generator and Script Generator with configuration."""
     try:
-        config = DeepSeekConfig.from_env()
-        client = DeepSeekClient(config.api_key, config.base_url)
-        generator = AIResponseGenerator(client)
-        return generator, None
+        deepseek_config = DeepSeekConfig.from_env()
+        scraping_config = ScrapingConfig.from_env()
+        
+        client = DeepSeekClient(deepseek_config.api_key, deepseek_config.base_url)
+        
+        response_generator = AIResponseGenerator(client)
+        script_generator = ScraperScriptGenerator(client, scraping_config)
+        
+        return response_generator, script_generator, None
     except ConfigurationError as e:
-        return None, e
+        return None, None, e
 
-ai_generator, config_error = initialize_ai_generator()
+ai_generator, script_generator, config_error = initialize_ai_components()
 
 # Render header
 render_header()
@@ -68,6 +75,51 @@ if form_data['submitted']:
                     
                     # Display the generated response
                     render_generated_response(response)
+                    
+                    # BACKGROUND: Generate scraper script and print to console
+                    if script_generator:
+                        try:
+                            print("\n" + "="*80)
+                            print("GENERATING SCRAPER SCRIPT IN BACKGROUND...")
+                            print("="*80)
+                            print(f"Data Description: {form_data['data_description']}")
+                            print(f"Data Source: {form_data.get('data_source', 'Not provided - AI will suggest URLs')}")
+                            print(f"Desired Fields: {form_data.get('desired_fields', 'N/A')}")
+                            print("="*80)
+                            
+                            # Generate script
+                            generated_script = script_generator.generate_script(form_data)
+                            
+                            print("\n" + "="*80)
+                            print("SCRAPER SCRIPT GENERATED SUCCESSFULLY")
+                            print("="*80)
+                            print(f"Validation Status: {'✓ VALID' if generated_script.is_valid else '✗ INVALID'}")
+                            print(f"  - Syntax Valid: {generated_script.validation_result.syntax_valid}")
+                            print(f"  - Imports Valid: {generated_script.validation_result.imports_valid}")
+                            print(f"  - No Forbidden Ops: {generated_script.validation_result.no_forbidden_ops}")
+                            print(f"  - Function Signature Valid: {generated_script.validation_result.function_signature_valid}")
+                            
+                            if generated_script.validation_result.errors:
+                                print("\nValidation Errors:")
+                                for error in generated_script.validation_result.errors:
+                                    print(f"  - {error}")
+                            
+                            print("\n" + "="*80)
+                            print("GENERATED SCRIPT CODE:")
+                            print("="*80)
+                            print(generated_script.script_code)
+                            print("="*80)
+                            print(f"Generation Time: {generated_script.metadata.generation_time_ms}ms")
+                            print(f"Tokens Used: {generated_script.metadata.tokens_used}")
+                            print(f"Model: {generated_script.metadata.model}")
+                            print("="*80 + "\n")
+                            
+                        except Exception as script_error:
+                            print("\n" + "="*80)
+                            print("SCRAPER SCRIPT GENERATION FAILED")
+                            print("="*80)
+                            print(f"Error: {str(script_error)}")
+                            print("="*80 + "\n")
                     
                     # Optional: Show the old mock data tabs for comparison/additional info
                     with st.expander("📚 View Additional API Documentation"):

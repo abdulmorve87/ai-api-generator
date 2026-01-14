@@ -168,6 +168,152 @@ def render_generated_response(response):
             st.code(response.raw_output, language="json")
 
 
+def render_generated_script(generated_script):
+    """
+    Display the AI-generated scraper script with formatting and actions.
+    
+    Args:
+        generated_script: GeneratedScript object from ai_layer
+    """
+    # Show validation status
+    if generated_script.is_valid:
+        st.success("✅ Scraper Script Generated Successfully!")
+    else:
+        st.warning("⚠️ Script Generated with Validation Warnings")
+    
+    # Display validation results
+    with st.expander("🔍 Validation Results", expanded=not generated_script.is_valid):
+        col1, col2, col3, col4 = st.columns(4)
+        
+        result = generated_script.validation_result
+        
+        with col1:
+            status = "✅" if result.syntax_valid else "❌"
+            st.metric("Syntax", status)
+        
+        with col2:
+            status = "✅" if result.imports_valid else "❌"
+            st.metric("Imports", status)
+        
+        with col3:
+            status = "✅" if result.no_forbidden_ops else "❌"
+            st.metric("Safety", status)
+        
+        with col4:
+            status = "✅" if result.function_signature_valid else "❌"
+            st.metric("Signature", status)
+        
+        if result.errors:
+            st.error("**Validation Errors:**")
+            for error in result.errors:
+                st.markdown(f"- {error}")
+        
+        if result.warnings:
+            st.warning("**Warnings:**")
+            for warning in result.warnings:
+                st.markdown(f"- {warning}")
+    
+    # Display the generated script
+    st.subheader("Generated Scraper Script")
+    st.code(generated_script.script_code, language="python")
+    
+    # Action buttons
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.download_button(
+            label="💾 Download Script",
+            data=generated_script.script_code,
+            file_name="scraper_script.py",
+            mime="text/x-python",
+            help="Download the generated Python script"
+        )
+    
+    with col2:
+        st.download_button(
+            label="📋 Download with Metadata",
+            data=generated_script.to_json(),
+            file_name="script_with_metadata.json",
+            mime="application/json",
+            help="Download script with generation metadata"
+        )
+    
+    with col3:
+        if st.button("📖 View Usage Instructions"):
+            st.session_state.show_script_instructions = True
+    
+    # Usage instructions
+    if st.session_state.get('show_script_instructions', False):
+        with st.expander("📖 How to Use This Script", expanded=True):
+            st.markdown(f"""
+            ### Running the Script
+            
+            1. **Save the script** to a file (e.g., `scraper.py`)
+            
+            2. **Install dependencies:**
+            ```bash
+            pip install requests beautifulsoup4 lxml
+            ```
+            
+            3. **Run the script:**
+            ```python
+            python scraper.py
+            ```
+            
+            4. **Or import and use in your code:**
+            ```python
+            from scraper import scrape_data
+            
+            result = scrape_data("{generated_script.metadata.target_url}")
+            print(result)
+            ```
+            
+            ### Expected Output Format
+            
+            The script returns a dictionary with:
+            - `data`: List of extracted records
+            - `metadata`: Information about the scraping operation
+            
+            ### Troubleshooting
+            
+            - **No data returned**: Check if the website structure has changed
+            - **Network errors**: Verify the URL is accessible
+            - **Parsing errors**: The CSS selectors may need adjustment
+            
+            ### Next Steps
+            
+            1. Test the script with the target URL
+            2. Adjust CSS selectors if needed
+            3. Integrate with your application
+            4. Set up scheduled execution if needed
+            """)
+    
+    # Display metadata
+    with st.expander("📊 Generation Metadata"):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Model", generated_script.metadata.model)
+            st.metric("Target URL", generated_script.metadata.target_url)
+        
+        with col2:
+            st.metric("Tokens Used", generated_script.metadata.tokens_used)
+            st.metric("Generation Time", f"{generated_script.metadata.generation_time_ms}ms")
+        
+        with col3:
+            st.metric("Timestamp", generated_script.metadata.timestamp.strftime("%H:%M:%S"))
+            if generated_script.metadata.required_fields:
+                st.metric("Required Fields", len(generated_script.metadata.required_fields))
+        
+        if generated_script.metadata.required_fields:
+            st.markdown("**Required Fields:**")
+            st.markdown(", ".join(generated_script.metadata.required_fields))
+        
+        # Show raw output for debugging
+        if st.checkbox("Show raw AI output", key="script_raw_output"):
+            st.code(generated_script.raw_output, language="text")
+
+
 def render_error(error):
     """
     Display error messages with appropriate styling and troubleshooting hints.
@@ -183,6 +329,10 @@ def render_error(error):
         ValidationError,
         GenerationError,
         DeepSeekAPIError
+    )
+    from ai_layer.script_models import (
+        ScriptValidationError,
+        ScriptGenerationError
     )
     
     # Determine error type and customize message
@@ -267,6 +417,45 @@ def render_error(error):
         - Reduce the number of fields requested
         - Try again (AI responses can vary)
         """)
+    
+    elif isinstance(error, ScriptGenerationError):
+        st.error("🤖 Script Generation Error")
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        **How to fix:**
+        - Ensure the target URL is provided
+        - Try simplifying your requirements
+        - Provide a clearer data description
+        - Verify the URL is accessible
+        - Try again (AI responses can vary)
+        """)
+    
+    elif isinstance(error, ScriptValidationError):
+        st.error("⚠️ Script Validation Error")
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        The generated script failed validation checks.
+        
+        **How to fix:**
+        - Try regenerating the script
+        - Simplify your requirements
+        - Check the validation details below
+        """)
+        
+        if hasattr(error, 'validation_result') and error.validation_result:
+            st.markdown("**Validation Details:**")
+            result = error.validation_result
+            st.markdown(f"- Syntax Valid: {'✅' if result.syntax_valid else '❌'}")
+            st.markdown(f"- Imports Valid: {'✅' if result.imports_valid else '❌'}")
+            st.markdown(f"- No Forbidden Ops: {'✅' if result.no_forbidden_ops else '❌'}")
+            st.markdown(f"- Function Signature Valid: {'✅' if result.function_signature_valid else '❌'}")
+            
+            if result.errors:
+                st.markdown("**Errors:**")
+                for err in result.errors:
+                    st.markdown(f"- {err}")
     
     elif isinstance(error, DeepSeekAPIError):
         st.error("🔧 API Error")
