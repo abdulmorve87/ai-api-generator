@@ -23,6 +23,24 @@ from .engine import ScrapingEngine
 from .static_scraper import StaticScraper
 from .config import ScrapingConfig, get_config, set_config
 
+# Dynamic Execution (AI-Scraping Integration)
+from .dynamic_execution import (
+    DynamicScriptExecutor,
+    ConsoleOutputFormatter,
+    AIScrapingIntegration,
+    create_integration,
+    configure_logging,
+    ExecutionConfig,
+    ExecutionResult,
+    ExecutionMetadata,
+    SourceResult,
+    ScriptExecutionError,
+    SecurityError,
+    ScriptTimeoutError,
+    ScriptSyntaxError,
+    ScriptRuntimeError,
+)
+
 __all__ = [
     # Models
     'ScriptConfig',
@@ -45,6 +63,22 @@ __all__ = [
     'ScrapingConfig',
     'get_config',
     'set_config',
+    
+    # Dynamic Execution (AI-Scraping Integration)
+    'DynamicScriptExecutor',
+    'ConsoleOutputFormatter',
+    'AIScrapingIntegration',
+    'create_integration',
+    'configure_logging',
+    'ExecutionConfig',
+    'ExecutionResult',
+    'ExecutionMetadata',
+    'SourceResult',
+    'ScriptExecutionError',
+    'SecurityError',
+    'ScriptTimeoutError',
+    'ScriptSyntaxError',
+    'ScriptRuntimeError',
 ]
 
-__version__ = '0.1.0-phase1'
+__version__ = '0.2.0-phase1'
