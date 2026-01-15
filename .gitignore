@@ -55,3 +55,6 @@ htmlcov/
 cache/
 temp/
 sandbox/
+
+# Data
+data/
