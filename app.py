@@ -206,11 +206,20 @@ if form_data['submitted']:
                         user_url = form_data.get('data_source', '').strip()
                         script_urls = _extract_all_urls_from_script(generated_script.script_code)
                         
-                        # Build list of URLs to try
+                        # Build list of URLs to try (user URL first, then script URLs, avoiding duplicates)
                         urls_to_try = []
-                        if user_url:
+                        seen_urls = set()
+                        
+                        # Add user URL first (highest priority)
+                        if user_url and user_url not in seen_urls:
                             urls_to_try.append(user_url)
-                        urls_to_try.extend(script_urls)
+                            seen_urls.add(user_url)
+                        
+                        # Add script URLs (avoiding duplicates)
+                        for script_url in script_urls:
+                            if script_url not in seen_urls:
+                                urls_to_try.append(script_url)
+                                seen_urls.add(script_url)
                         
                         if not urls_to_try:
                             print("No target URL provided or found in script")
