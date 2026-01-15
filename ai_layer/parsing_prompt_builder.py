@@ -9,6 +9,10 @@ import json
 from typing import Dict, Any, List, Optional
 
 
+# Maximum records to return to prevent excessive response sizes
+MAX_RECORDS_LIMIT = 500
+
+
 class ParsingPromptBuilder:
     """Builds prompts for parsing scraped data into structured JSON."""
     
@@ -24,10 +28,8 @@ class ParsingPromptBuilder:
             scraped_text: Extracted text from scraped data
             user_requirements: User's requirements containing:
                 - data_description: str
-                - data_source: str (optional)
-                - desired_fields: str (optional, newline-separated)
+                - desired_fields: str (optional, newline/comma-separated)
                 - response_structure: str (optional, JSON string)
-                - update_frequency: str
                 
         Returns:
             List of message dicts for DeepSeek API
@@ -47,35 +49,55 @@ class ParsingPromptBuilder:
         Returns:
             System prompt instructing AI on parsing task
         """
-        return """You are a data parser and extractor. Your task is to extract and structure data from scraped web content into clean, well-formatted JSON.
+        return f"""You are a data parser and extractor. Your task is to extract and structure data from scraped web content into clean, well-formatted JSON.
+
+USER INPUT STANDARDS (Phase 1):
+The user inputs follow these standardized formats:
+- Data Description: Plain text describing what data is needed
+- Important Fields: Comma or newline-separated field names (e.g., "company_name, listing_date" or one per line)
+  - Field names use snake_case or kebab-case (e.g., company_name, listing-date)
+  - These are the KEY fields the user wants, but you should also include other useful data
+- JSON Structure: If provided, a valid JSON object template to follow EXACTLY
 
 CRITICAL RULES:
 1. Return ONLY valid JSON - no markdown, no explanations, no code blocks
-2. Extract ALL relevant data records from the provided content
-3. Map extracted data to the user-specified fields
-4. If a requested field is not found in the data, use null
-5. Preserve data types: numbers as numbers, dates as ISO strings, text as strings
-6. Remove any HTML artifacts, special characters, or noise from values
-7. If the data contains multiple records, return them as an array
-8. Follow the user's specified structure exactly if provided
-9. If no structure is provided, use a sensible default with a "data" array
+2. DO NOT TRUNCATE DATA - Extract ALL records from the scraped content that match the requirements
+   - If there are 24 race records, return all 24
+   - If there are 50 products, return all 50
+   - Maximum limit: {MAX_RECORDS_LIMIT} records (only truncate if exceeding this)
+3. Preserve data types: numbers as numbers, dates as ISO strings, text as strings
+4. Remove any HTML artifacts, special characters, or noise from values
 
-OUTPUT FORMAT:
-- Return a JSON object with a "data" key containing the extracted records
+FIELD HANDLING RULES:
+5. Important Fields provided by user:
+   - Add these as keys in the JSON response
+   - If data for a field is not found, set its value to null
+   - These are NOT the only fields - also include other useful/relevant data from the scraped content
+   - Use the field names as keys only (ignore any example values the user may have provided)
+
+6. JSON Structure Template (if provided by user):
+   - This is STRICT MODE - follow the structure EXACTLY
+   - Add ALL keys from the user's JSON template to the response
+   - If no data found for a key, use null as the value
+   - DO NOT add any additional keys beyond what the user specified
+   - This overrides the "include other useful data" rule
+
+OUTPUT FORMAT (when NO JSON structure template provided):
+- Return a JSON object with a "data" key containing the extracted records array
 - Include a "metadata" key with total_count and extraction_timestamp
 - Each record should have consistent field names
 
-EXAMPLE OUTPUT:
-{
+EXAMPLE OUTPUT (no template):
+{{
   "data": [
-    {"field1": "value1", "field2": 123, "field3": null},
-    {"field1": "value2", "field2": 456, "field3": "available"}
+    {{"company_name": "ABC Corp", "listing_date": "2026-01-15", "price": 123, "sector": "Technology"}},
+    {{"company_name": "XYZ Ltd", "listing_date": "2026-01-16", "price": 456, "sector": "Finance"}}
   ],
-  "metadata": {
+  "metadata": {{
     "total_count": 2,
     "extraction_timestamp": "2026-01-15T10:30:00Z"
-  }
-}"""
+  }}
+}}"""
     
     def _build_user_prompt(
         self,
@@ -92,15 +114,17 @@ EXAMPLE OUTPUT:
         Returns:
             User prompt string
         """
-        # Extract requirements
+        # Extract requirements (no data_source or update_frequency - not needed for parsing)
         data_description = user_requirements.get('data_description', '')
-        data_source = user_requirements.get('data_source', '')
         desired_fields_text = user_requirements.get('desired_fields', '')
         response_structure = user_requirements.get('response_structure', '')
-        update_frequency = user_requirements.get('update_frequency', 'Daily')
         
         # Parse desired fields
         desired_fields = self._parse_desired_fields(desired_fields_text)
+        
+        # Check if user provided a JSON structure template
+        validated_structure = self._validate_json_structure(response_structure)
+        has_strict_structure = validated_structure is not None
         
         # Build prompt parts
         prompt_parts = []
@@ -108,31 +132,27 @@ EXAMPLE OUTPUT:
         # Data description
         prompt_parts.append(f"DATA DESCRIPTION:\n{data_description}")
         
-        # Data source (if provided)
-        if data_source:
-            prompt_parts.append(f"\nDATA SOURCE:\n{data_source}")
-        
-        # Desired fields
-        if desired_fields:
+        # Important fields (if provided and no strict structure)
+        if desired_fields and not has_strict_structure:
             fields_list = "\n".join(f"- {field}" for field in desired_fields)
-            prompt_parts.append(f"\nREQUIRED FIELDS (extract these from the data):\n{fields_list}")
-        else:
-            prompt_parts.append("\nREQUIRED FIELDS:\nExtract all relevant fields from the data.")
+            prompt_parts.append(f"\nIMPORTANT FIELDS (include these as keys, use null if not found, also add other useful data):\n{fields_list}")
+        elif desired_fields and has_strict_structure:
+            # When strict structure is provided, fields are just for reference
+            fields_list = "\n".join(f"- {field}" for field in desired_fields)
+            prompt_parts.append(f"\nREFERENCE FIELDS (for context only - follow the JSON structure below strictly):\n{fields_list}")
         
-        # Response structure
-        if response_structure:
-            validated_structure = self._validate_json_structure(response_structure)
-            if validated_structure:
-                prompt_parts.append(f"\nOUTPUT STRUCTURE (follow this format):\n{json.dumps(validated_structure, indent=2)}")
-        
-        # Update frequency context
-        prompt_parts.append(f"\nUPDATE FREQUENCY: {update_frequency}")
+        # Response structure (STRICT MODE)
+        if has_strict_structure:
+            prompt_parts.append(f"\n⚠️ STRICT JSON STRUCTURE (follow EXACTLY - only use these keys, no additional fields):\n{json.dumps(validated_structure, indent=2)}")
         
         # Scraped data
-        prompt_parts.append(f"\n\nSCRAPED DATA TO PARSE:\n{scraped_text}")
+        prompt_parts.append(f"\n\nSCRAPED DATA TO PARSE (extract ALL records, do not truncate):\n{scraped_text}")
         
-        # Final instruction
-        prompt_parts.append("\n\nParse the above scraped data and return a structured JSON response with the requested fields. Return ONLY valid JSON, no explanations.")
+        # Final instruction based on mode
+        if has_strict_structure:
+            prompt_parts.append("\n\nParse the above scraped data and return JSON following the EXACT structure provided. Use null for missing values. Return ONLY valid JSON, no explanations.")
+        else:
+            prompt_parts.append("\n\nParse the above scraped data and return a structured JSON response. Include the important fields as keys (null if not found) plus any other useful data. Return ONLY valid JSON, no explanations.")
         
         return "\n".join(prompt_parts)
     
@@ -194,20 +214,21 @@ EXAMPLE OUTPUT:
         """
         Extract and validate all fields from user requirements.
         
+        Note: data_source and update_frequency are not included as they are
+        not needed for the parsing phase (already used by scraper layer).
+        
         Args:
             user_requirements: Raw user requirements dictionary
             
         Returns:
-            Dictionary with extracted fields
+            Dictionary with extracted fields for parsing
         """
         return {
             'data_description': user_requirements.get('data_description', ''),
-            'data_source': user_requirements.get('data_source', ''),
             'desired_fields': self._parse_desired_fields(
                 user_requirements.get('desired_fields', '')
             ),
             'response_structure': self._validate_json_structure(
                 user_requirements.get('response_structure', '')
-            ),
-            'update_frequency': user_requirements.get('update_frequency', 'Daily')
+            )
         }
