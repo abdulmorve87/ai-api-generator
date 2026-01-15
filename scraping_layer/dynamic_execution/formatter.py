@@ -30,7 +30,7 @@ class ConsoleOutputFormatter:
     def __init__(
         self,
         max_records_display: int = 10,
-        show_full_data: bool = False,
+        show_full_data: bool = True,
         use_colors: bool = True,
         indent: int = 2
     ):
@@ -39,7 +39,7 @@ class ConsoleOutputFormatter:
         
         Args:
             max_records_display: Maximum number of records to display
-            show_full_data: Whether to show all record fields
+            show_full_data: Whether to show all record fields (default: True)
             use_colors: Whether to use ANSI colors in output
             indent: Indentation level for nested data
         """
@@ -231,9 +231,9 @@ class ConsoleOutputFormatter:
                 }
                 
                 if self.show_full_data:
-                    # Show all fields
+                    # Show all fields with longer truncation
                     for key, value in display_record.items():
-                        lines.append(f"{prefix}  {key}: {self._truncate(str(value), 100)}")
+                        lines.append(f"{prefix}  {key}: {self._truncate(str(value), 500)}")
                 else:
                     # Show key fields only
                     key_fields = ['title', 'name', 'date', 'description', 'link', 'url']

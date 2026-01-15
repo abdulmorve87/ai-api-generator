@@ -56,8 +56,9 @@ Our scraping layer uses:
 - Script should work with ANY URL passed to it
 - Use **dynamic URL-pattern detection** to choose scraping strategy
 - Include **robust CSS selectors with fallbacks**
-- Return **structured data with proper error metadata**
-- Include **noise filtering, confidence scoring, and deduplication**
+- Return **RAW, UNFILTERED data** - NO filtering, NO confidence scoring, NO deduplication
+- Extract ALL data found - the pipeline will handle processing later
+- Return **error metadata** for debugging
 
 ### Function Signature
 ```python
@@ -68,16 +69,13 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
 ```python
 {
     'data': [
-        {'field1': 'value1', 'confidence_score': 6, ...},
+        {'field1': 'value1', 'field2': 'value2', ...},  # RAW extracted data, no filtering
     ],
     'metadata': {
         'source_url': str,
-        'total_count': int,
-        'filtered_count': int,  # Records removed by noise/score filtering
-        'duplicate_count': int,  # Records removed as duplicates
+        'total_count': int,  # Total records extracted (no filtering applied)
         'scraped_at': 'ISO timestamp',
         'scraping_method': str,  # 'table', 'cards', 'generic'
-        'confidence': str,  # 'high', 'medium', 'low'
         'update_frequency': str,
         'error': str or None
     }
@@ -89,17 +87,8 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
 ```python
 import requests
 from bs4 import BeautifulSoup
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 import datetime
-import re
-
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
-MIN_TITLE_LENGTH = 3
-BLACKLIST_WORDS = {'login', 'subscribe', 'cookie', 'privacy', 'terms', 'sign in', 'sign up', 'newsletter', 'advertisement', 'sponsored'}
-MIN_CONFIDENCE_SCORE = 4
 
 # ============================================================
 # UTILITY FUNCTIONS
@@ -118,105 +107,13 @@ def get_attr_safe(element, attr: str, default: str = '') -> str:
     return element.get(attr, default) or default
 
 # ============================================================
-# NOISE CONTROL
+# STRATEGY DETECTION
 # ============================================================
 
-def is_noise(record: Dict[str, Any]) -> bool:
-    \"\"\"Check if a record is noise/junk data.\"\"\"
-    title = str(record.get('title', '')).lower()
-    
-    # Check minimum title length
-    if len(title) < MIN_TITLE_LENGTH:
-        return True
-    
-    # Check blacklist words
-    for word in BLACKLIST_WORDS:
-        if word in title:
-            return True
-    
-    return False
-
-def filter_noise(data: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
-    \"\"\"Remove noise records. Returns (cleaned_data, removed_count).\"\"\"
-    cleaned = [r for r in data if not is_noise(r)]
-    removed = len(data) - len(cleaned)
-    return cleaned, removed
-
-# ============================================================
-# CONFIDENCE SCORING
-# ============================================================
-
-def calculate_confidence_score(record: Dict[str, Any]) -> int:
-    \"\"\"Calculate confidence score for a record.\"\"\"
-    score = 0
-    
-    # Title: +2 points
-    if record.get('title') and len(str(record['title'])) >= MIN_TITLE_LENGTH:
-        score += 2
-    
-    # Date: +2 points
-    if record.get('date') and str(record['date']).strip():
-        score += 2
-    
-    # Location/Circuit/Venue: +2 points
-    if record.get('circuit') or record.get('location') or record.get('venue'):
-        score += 2
-    
-    # Round/Number: +1 point
-    if record.get('round') or record.get('number') or record.get('index'):
-        score += 1
-    
-    # Link: +1 point
-    if record.get('link') and str(record['link']).startswith(('http', '/')):
-        score += 1
-    
-    # Description: +1 point
-    if record.get('description') and len(str(record['description'])) > 10:
-        score += 1
-    
-    return score
-
-def filter_low_confidence(data: List[Dict[str, Any]], min_score: int = MIN_CONFIDENCE_SCORE) -> Tuple[List[Dict[str, Any]], int]:
-    \"\"\"Remove records below minimum confidence score.\"\"\"
-    # Add scores to all records
-    for record in data:
-        record['confidence_score'] = calculate_confidence_score(record)
-    
-    # Filter by score
-    cleaned = [r for r in data if r['confidence_score'] >= min_score]
-    removed = len(data) - len(cleaned)
-    return cleaned, removed
-
-# ============================================================
-# DEDUPLICATION
-# ============================================================
-
-def deduplicate(data: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
-    \"\"\"Remove duplicate records by title+date. Returns (cleaned_data, duplicate_count).\"\"\"
-    seen = set()
-    cleaned = []
-    
-    for record in data:
-        # Create dedup key from title and date
-        title = str(record.get('title', '')).lower().strip()
-        date = str(record.get('date', '')).strip()
-        key = (title, date)
-        
-        if key not in seen:
-            seen.add(key)
-            cleaned.append(record)
-    
-    duplicate_count = len(data) - len(cleaned)
-    return cleaned, duplicate_count
-
-# ============================================================
-# STRATEGY DETECTION (IMPROVED)
-# ============================================================
-
-def detect_scraping_strategy(soup: BeautifulSoup, url: str) -> Tuple[str, str]:
+def detect_scraping_strategy(soup: BeautifulSoup, url: str) -> str:
     \"\"\"
     Detect the best scraping strategy based on page structure.
-    Returns (strategy, confidence).
+    Returns strategy name.
     
     Priority: table > cards > articles > generic
     \"\"\"
@@ -226,25 +123,25 @@ def detect_scraping_strategy(soup: BeautifulSoup, url: str) -> Tuple[str, str]:
     
     # Prefer table if it exists (most structured)
     if has_table:
-        return 'table', 'high'
+        return 'table'
     
     # Cards are second preference
     if has_cards:
-        return 'cards', 'high'
+        return 'cards'
     
     # Articles third
     if has_articles:
-        return 'articles', 'medium'
+        return 'articles'
     
-    # Generic fallback - lower confidence
-    return 'generic', 'low'
+    # Generic fallback
+    return 'generic'
 
 # ============================================================
-# SCRAPING STRATEGIES
+# SCRAPING STRATEGIES - RAW DATA EXTRACTION
 # ============================================================
 
 def scrape_table_data(soup: BeautifulSoup, required_fields: List[str]) -> List[Dict[str, Any]]:
-    \"\"\"Extract data from HTML tables.\"\"\"
+    \"\"\"Extract ALL data from HTML tables - no filtering.\"\"\"
     data = []
     tables = soup.select('table[class*="data"], table[class*="schedule"], table[class*="result"], table.results, table')
     
@@ -265,7 +162,7 @@ def scrape_table_data(soup: BeautifulSoup, required_fields: List[str]) -> List[D
         
         for row in rows:
             cells = row.select('td')
-            if cells and headers and len(cells) >= 1:
+            if cells:
                 record = {}
                 for i, cell in enumerate(cells):
                     if i < len(headers) and headers[i]:
@@ -275,53 +172,47 @@ def scrape_table_data(soup: BeautifulSoup, required_fields: List[str]) -> List[D
                     if link and 'link' not in record:
                         record['link'] = get_attr_safe(link, 'href')
                 
-                # Map to standard fields
-                record['title'] = record.get('name') or record.get('title') or record.get('event') or ''
-                record['date'] = record.get('date') or record.get('start_date') or ''
-                
-                if record.get('title') or len(record) > 2:
+                # Extract ALL data - no filtering
+                if record:  # Add any record with data
                     data.append(record)
     
     return data
 
 def scrape_card_data(soup: BeautifulSoup, required_fields: List[str]) -> List[Dict[str, Any]]:
-    \"\"\"Extract data from card/item layouts.\"\"\"
+    \"\"\"Extract ALL data from card/item layouts - no filtering.\"\"\"
     data = []
     cards = soup.select('[class*="card"], [class*="item"]:not(nav *):not(header *):not(footer *), [class*="list-item"], article')
     
     for card in cards:
         record = {}
         
-        # Title with multiple fallbacks
+        # Extract all possible fields
         record['title'] = get_text_safe(
             card.select_one('h1, h2, h3, h4, [class*="title"], [class*="name"], [class*="heading"]')
         )
         
-        # Description
         record['description'] = get_text_safe(
             card.select_one('p:not([class*="date"]), [class*="desc"], [class*="summary"], [class*="content"], [class*="text"]')
         )
         
-        # Date with fallbacks
         date_elem = card.select_one('[class*="date"], time, [datetime], [class*="time"]')
         record['date'] = get_text_safe(date_elem) or get_attr_safe(date_elem, 'datetime')
         
-        # Link
         link_elem = card.select_one('a[href]')
         record['link'] = get_attr_safe(link_elem, 'href')
         
-        # Location/venue
         record['location'] = get_text_safe(
             card.select_one('[class*="location"], [class*="venue"], [class*="place"], [class*="circuit"]')
         )
         
-        if record['title']:
+        # Add ALL records - no filtering
+        if record:
             data.append(record)
     
     return data
 
 def scrape_generic(soup: BeautifulSoup, required_fields: List[str]) -> List[Dict[str, Any]]:
-    \"\"\"Generic fallback scraper using flexible selectors.\"\"\"
+    \"\"\"Generic fallback scraper - extract ALL data found.\"\"\"
     data = []
     
     # Try to find any repeating content blocks
@@ -334,13 +225,13 @@ def scrape_generic(soup: BeautifulSoup, required_fields: List[str]) -> List[Dict
     if not containers:
         containers = [soup.body] if soup.body else [soup]
     
-    for container in containers[:3]:  # Limit containers to avoid noise
+    for container in containers:
         items = container.select(
             '[class*="item"]:not(nav *):not(header *):not(footer *), '
             '[class*="entry"], [class*="row"]:not(nav *), '
             '[class*="event"], [class*="card"], '
             'li:not(nav li):not(footer li)'
-        )[:50]  # Limit items
+        )
         
         for item in items:
             record = {}
@@ -349,7 +240,8 @@ def scrape_generic(soup: BeautifulSoup, required_fields: List[str]) -> List[Dict
             record['date'] = get_text_safe(item.select_one('[class*="date"], time'))
             record['link'] = get_attr_safe(item.select_one('a'), 'href')
             
-            if record['title'] and len(record['title']) >= MIN_TITLE_LENGTH:
+            # Add ALL records - no filtering
+            if record:
                 data.append(record)
     
     return data
@@ -360,8 +252,8 @@ def scrape_generic(soup: BeautifulSoup, required_fields: List[str]) -> List[Dict
 
 def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
     \"\"\"
-    Scrape data from a URL using adaptive strategy detection.
-    Includes noise filtering, confidence scoring, and deduplication.
+    Scrape RAW data from a URL using adaptive strategy detection.
+    NO FILTERING - Extract everything found. Processing happens later in pipeline.
     
     Args:
         url: The URL to scrape
@@ -373,11 +265,8 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
     metadata = {
         'source_url': url,
         'total_count': 0,
-        'filtered_count': 0,
-        'duplicate_count': 0,
         'scraped_at': datetime.datetime.utcnow().isoformat(),
         'scraping_method': 'unknown',
-        'confidence': 'low',
         'update_frequency': '[FREQUENCY]',
         'error': None
     }
@@ -393,9 +282,8 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
         soup = BeautifulSoup(response.text, 'lxml')
         
         # Detect best scraping strategy
-        strategy, confidence = detect_scraping_strategy(soup, url)
+        strategy = detect_scraping_strategy(soup, url)
         metadata['scraping_method'] = strategy
-        metadata['confidence'] = confidence
         
         # Required fields from user (customize extraction)
         required_fields = []  # Will be populated based on user input
@@ -408,20 +296,8 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
         else:
             data = scrape_generic(soup, required_fields)
         
-        raw_count = len(data)
-        
-        # Step 1: Filter noise
-        data, noise_removed = filter_noise(data)
-        
-        # Step 2: Calculate confidence scores and filter low-confidence
-        data, low_conf_removed = filter_low_confidence(data)
-        
-        # Step 3: Deduplicate
-        data, duplicate_count = deduplicate(data)
-        
+        # NO FILTERING - Return ALL extracted data
         metadata['total_count'] = len(data)
-        metadata['filtered_count'] = noise_removed + low_conf_removed
-        metadata['duplicate_count'] = duplicate_count
         
         return {'data': data, 'metadata': metadata}
         
@@ -443,10 +319,9 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
 
 Based on user requirements, you should:
 
-1. **Customize confidence scoring** - Add/adjust field weights based on required fields
-2. **Customize selectors** - Add domain-specific CSS selectors for known sites
-3. **Customize field extraction** - Map to user's exact field names
-4. **Adjust thresholds** - MIN_TITLE_LENGTH, MIN_CONFIDENCE_SCORE, BLACKLIST_WORDS
+1. **Customize selectors** - Add domain-specific CSS selectors for known sites
+2. **Customize field extraction** - Map to user's exact field names
+3. **Extract ALL data** - Do not filter, trim, or validate data quality
 
 ## SAFETY REQUIREMENTS
 - NO exec, eval, os.system, subprocess, __import__
@@ -484,7 +359,7 @@ Start with 'import' statements."""
             user_prompt_parts.append(f"User input: {fields['data_source']}")
             user_prompt_parts.append("\nInstructions:")
             user_prompt_parts.append("1. Add domain-specific selector logic for these sites")
-            user_prompt_parts.append("2. Customize confidence scoring for this data type")
+            user_prompt_parts.append("2. Extract ALL data found - no filtering or validation")
         else:
             user_prompt_parts.append("\n** NO SPECIFIC URLS PROVIDED **")
             user_prompt_parts.append("\nGenerate a generic scraper. Suggest example URLs in comments.")
@@ -501,9 +376,9 @@ Start with 'import' statements."""
                 for field in field_list:
                     user_prompt_parts.append(f"  - {field}")
                 user_prompt_parts.append("\nInstructions:")
-                user_prompt_parts.append("1. Update calculate_confidence_score() to weight these fields")
-                user_prompt_parts.append("2. Add specific selectors for each field")
-                user_prompt_parts.append("3. Map to these exact field names in output")
+                user_prompt_parts.append("1. Add specific selectors for each field")
+                user_prompt_parts.append("2. Map to these exact field names in output")
+                user_prompt_parts.append("3. Extract ALL values found - even empty or partial data")
         else:
             user_prompt_parts.append("\n** EXTRACT RELEVANT FIELDS BASED ON DATA DESCRIPTION **")
         
@@ -528,10 +403,10 @@ Start with 'import' statements."""
         user_prompt_parts.append("GENERATE THE SCRIPT")
         user_prompt_parts.append("=" * 60)
         user_prompt_parts.append("\nGenerate a Platform Core scraper with:")
-        user_prompt_parts.append("1. Noise filtering (blacklist, min length)")
-        user_prompt_parts.append("2. Confidence scoring (customized for required fields)")
-        user_prompt_parts.append("3. Deduplication (by title+date)")
-        user_prompt_parts.append("4. Smart strategy detection (table > cards > generic)")
+        user_prompt_parts.append("1. Smart strategy detection (table > cards > generic)")
+        user_prompt_parts.append("2. RAW data extraction - NO filtering, NO confidence scoring")
+        user_prompt_parts.append("3. Extract ALL data found - the pipeline will process it later")
+        user_prompt_parts.append("4. Robust error handling with metadata")
         user_prompt_parts.append("\nReturn ONLY Python code.")
         
         messages = [
