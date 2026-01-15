@@ -19,6 +19,9 @@ from ai_layer.exceptions import (
     GenerationError
 )
 
+# Input standardization and validation
+from ai_layer.input_standardizer import InputStandardizer, StandardizedInput
+
 # Parsing models and exceptions
 from ai_layer.parsing_models import (
     ParsedDataResponse,
@@ -61,6 +64,9 @@ __all__ = [
     'DeepSeekConnectionError',
     'ValidationError',
     'GenerationError',
+    # Input standardization
+    'InputStandardizer',
+    'StandardizedInput',
     # Response generation
     'GeneratedResponse',
     'ResponseMetadata',

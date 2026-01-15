@@ -3,6 +3,7 @@ from utils.ui_components import render_header
 from utils.styles import load_custom_css
 from components.form import render_api_form
 from components.results import render_error, render_parsed_response
+from components.input_help import render_input_format_guide, show_validation_summary
 
 # AI Layer imports
 from ai_layer import (
@@ -12,7 +13,9 @@ from ai_layer import (
     ConfigurationError,
     ScrapedDataParser,
     EmptyDataError,
-    ParsingError
+    ParsingError,
+    InputStandardizer,
+    StandardizedInput
 )
 from scraping_layer.config import ScrapingConfig
 
@@ -181,6 +184,9 @@ api_server, endpoint_manager, api_server_error = initialize_api_server()
 # Render header
 render_header()
 
+# Render input format guide in sidebar
+render_input_format_guide()
+
 # Show API Server status in sidebar
 with st.sidebar:
     st.subheader("🔌 API Server")
@@ -235,6 +241,35 @@ form_data = render_api_form()
 
 # Handle form submission
 if form_data['submitted']:
+    # Validate and standardize inputs FIRST
+    standardized_input, validation_errors = InputStandardizer.standardize_form_input(form_data)
+    
+    if validation_errors:
+        # Show validation errors to user
+        error_message = InputStandardizer.format_validation_errors(validation_errors)
+        st.error(error_message)
+        
+        # Show examples for fixing errors
+        with st.expander("💡 Need help with input formats?"):
+            examples = InputStandardizer.get_input_examples()
+            
+            if any('URL' in err or 'url' in err.lower() for err in validation_errors):
+                st.markdown("**URL Format:**")
+                st.info(examples['data_source'])
+            
+            if any('field' in err.lower() for err in validation_errors):
+                st.markdown("**Field Format:**")
+                st.info(examples['desired_fields'])
+            
+            if any('JSON' in err or 'json' in err.lower() for err in validation_errors):
+                st.markdown("**JSON Format:**")
+                st.info(examples['response_structure'])
+        
+        st.stop()  # Stop execution if validation fails
+    
+    # Show validation summary
+    show_validation_summary(standardized_input)
+    
     if not form_data['data_description']:
         st.error("⚠️ Please provide a data description to continue")
     else:

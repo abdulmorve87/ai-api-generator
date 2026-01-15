@@ -23,6 +23,15 @@ python test_scraper.py https://example.com title=h1 description=p
 
 ## 📋 Features
 
+### ✅ Input Standardization (Phase 1 Complete)
+
+- **Multiple URL Support** - Comma or newline separated URLs
+- **Field Standardization** - Flexible field name input formats
+- **JSON Validation** - Validate and parse JSON structures
+- **Format Examples** - In-app guidance with examples
+- **Clear Error Messages** - Specific, actionable validation feedback
+- **Comprehensive Testing** - 24 test cases covering all scenarios
+
 ### ✅ AI Response Generator (Phase 1 Complete)
 
 - **DeepSeek AI Integration** - Generate realistic API responses using AI
@@ -196,6 +205,10 @@ python scraping_layer/examples/debug_scraper.py
 
 ## 📖 Documentation
 
+- **[Input Standardization Guide](docs/INPUT_STANDARDIZATION.md)** - User guide for input formats
+- **[Phase 1 Implementation](docs/PHASE1_INPUT_STANDARDIZATION.md)** - Technical documentation
+- **[UI Examples](docs/UI_EXAMPLES.md)** - Visual guide to the UI
+- **[Phase 1 Summary](PHASE1_SUMMARY.md)** - Quick reference
 - **[Scraping Layer](scraping_layer/README.md)** - Universal scraping system
 - **[Usage Guide](scraping_layer/docs/USAGE.md)** - Detailed usage instructions
 - **[Examples](scraping_layer/examples/README.md)** - Example scripts
