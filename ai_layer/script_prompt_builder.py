@@ -17,18 +17,52 @@ class ScriptPromptBuilder:
 
 ## CRITICAL REQUIREMENT: DEFAULT URLs
 
-**MANDATORY**: Every generated script MUST include a DEFAULT_URLS list at the top with at least 2 PUBLIC URLs that:
-- Do NOT require authentication or login
-- Do NOT have aggressive anti-scraping measures (avoid Amazon, Goodreads)
-- Are publicly accessible without API keys
-- Actually contain the requested data
+**MANDATORY**: Every generated script MUST include a DEFAULT_URLS list at the top with 3-5 PUBLIC URLs.
 
-Example of GOOD public URLs for books:
-- https://www.georgerrmartin.com/book-category/ (author's official site)
-- https://openlibrary.org/authors/OL2856508A/George_R._R._Martin (Open Library - public API)
-- https://en.wikipedia.org/wiki/George_R._R._Martin_bibliography (Wikipedia - always public)
+### URL SOURCING RULES (FOLLOW IN ORDER):
 
-Example of BAD URLs (require auth or block scrapers):
+1. **USER-PROVIDED URLs ARE MANDATORY**: If the user provides data source URLs, they MUST ALL be included in DEFAULT_URLS first, regardless of how many.
+
+2. **AI-SUGGESTED URLs**: Based on the user's data description, desired fields, and other inputs, YOU MUST find and add additional relevant URLs to reach 3-5 total URLs. Use your knowledge to identify:
+   - Official websites related to the data topic
+   - Public databases and open data portals
+   - Wikipedia pages with relevant data
+   - Government or institutional sites
+   - Community/fan sites with public data
+
+3. **URL QUALITY REQUIREMENTS** (for AI-suggested URLs only):
+   - Do NOT require authentication or login
+   - Do NOT have aggressive anti-scraping measures (avoid Amazon, Goodreads)
+   - Are publicly accessible without API keys
+   - Actually contain the requested data type
+
+### EXAMPLES:
+
+**User wants**: "Formula 1 race schedule"
+**User provides**: "https://www.formula1.com/en/racing/2024"
+**DEFAULT_URLS should include**:
+```python
+DEFAULT_URLS = [
+    'https://www.formula1.com/en/racing/2024',  # User-provided (MANDATORY)
+    'https://en.wikipedia.org/wiki/2024_Formula_One_World_Championship',  # AI-suggested
+    'https://www.motorsport.com/f1/schedule/',  # AI-suggested
+    'https://www.espn.com/f1/schedule',  # AI-suggested
+]
+```
+
+**User wants**: "Books by George R.R. Martin"
+**User provides**: NO URLs
+**DEFAULT_URLS should include**:
+```python
+DEFAULT_URLS = [
+    'https://www.georgerrmartin.com/book-category/',  # AI-suggested (official site)
+    'https://openlibrary.org/authors/OL2856508A/George_R._R._Martin',  # AI-suggested
+    'https://en.wikipedia.org/wiki/George_R._R._Martin_bibliography',  # AI-suggested
+    'https://www.isfdb.org/cgi-bin/ea.cgi?27',  # AI-suggested (SciFi database)
+]
+```
+
+### BAD URLs TO AVOID (for AI suggestions):
 - https://www.goodreads.com/* (requires login for full data)
 - https://www.amazon.com/* (aggressive anti-bot)
 - Any URL with /login, /signin, /account
@@ -36,9 +70,11 @@ Example of BAD URLs (require auth or block scrapers):
 **FORMAT**: Add this at the top of the script after imports:
 ```python
 # Default URLs for scraping (public, no-auth required)
+# User-provided URLs are listed first, followed by AI-suggested URLs
 DEFAULT_URLS = [
-    'https://example-public-site.com/data',
-    'https://another-public-site.org/info',
+    'https://user-provided-url.com/data',  # User-provided
+    'https://ai-suggested-url.com/info',   # AI-suggested based on data requirements
+    # ... 3-5 total URLs
 ]
 ```
 
@@ -351,18 +387,34 @@ Start with 'import' statements."""
         
         # DATA SOURCES
         user_prompt_parts.append("\n" + "=" * 60)
-        user_prompt_parts.append("DATA SOURCES")
+        user_prompt_parts.append("DATA SOURCES - CRITICAL URL REQUIREMENTS")
         user_prompt_parts.append("=" * 60)
         
         if fields['data_source']:
-            user_prompt_parts.append("\n** USER-PROVIDED SOURCES **")
-            user_prompt_parts.append(f"User input: {fields['data_source']}")
-            user_prompt_parts.append("\nInstructions:")
-            user_prompt_parts.append("1. Add domain-specific selector logic for these sites")
-            user_prompt_parts.append("2. Extract ALL data found - no filtering or validation")
+            user_prompt_parts.append("\n** USER-PROVIDED SOURCES (MANDATORY - MUST ALL BE INCLUDED) **")
+            user_prompt_parts.append(f"User provided URLs/sources: {fields['data_source']}")
+            user_prompt_parts.append("\n!! CRITICAL INSTRUCTIONS !!")
+            user_prompt_parts.append("1. ALL user-provided URLs MUST be included in DEFAULT_URLS - no exceptions")
+            user_prompt_parts.append("2. Add domain-specific selector logic for these sites")
+            user_prompt_parts.append("3. Extract ALL data found - no filtering or validation")
+            user_prompt_parts.append("\n** AI-SUGGESTED ADDITIONAL SOURCES **")
+            user_prompt_parts.append("Based on the data description and fields above, YOU MUST find and add")
+            user_prompt_parts.append("additional relevant public URLs to reach 3-5 total URLs in DEFAULT_URLS.")
+            user_prompt_parts.append("Use your knowledge to identify official sites, Wikipedia, open databases, etc.")
         else:
-            user_prompt_parts.append("\n** NO SPECIFIC URLS PROVIDED **")
-            user_prompt_parts.append("\nGenerate a generic scraper. Suggest example URLs in comments.")
+            user_prompt_parts.append("\n** NO USER URLs PROVIDED - AI MUST SUGGEST 3-5 URLs **")
+            user_prompt_parts.append("\nBased on the data description and required fields above,")
+            user_prompt_parts.append("YOU MUST find and provide 3-5 relevant public URLs in DEFAULT_URLS.")
+            user_prompt_parts.append("\nConsider:")
+            user_prompt_parts.append(f"- Data topic: {fields['data_description']}")
+            if fields['desired_fields']:
+                user_prompt_parts.append(f"- Fields needed: {fields['desired_fields']}")
+            user_prompt_parts.append("\nSearch your knowledge for:")
+            user_prompt_parts.append("- Official websites for this data type")
+            user_prompt_parts.append("- Wikipedia pages with relevant structured data")
+            user_prompt_parts.append("- Open data portals and public databases")
+            user_prompt_parts.append("- Government or institutional sources")
+            user_prompt_parts.append("- Community sites with public, scrapable data")
         
         # REQUIRED FIELDS
         user_prompt_parts.append("\n" + "=" * 60)
@@ -403,10 +455,16 @@ Start with 'import' statements."""
         user_prompt_parts.append("GENERATE THE SCRIPT")
         user_prompt_parts.append("=" * 60)
         user_prompt_parts.append("\nGenerate a Platform Core scraper with:")
-        user_prompt_parts.append("1. Smart strategy detection (table > cards > generic)")
-        user_prompt_parts.append("2. RAW data extraction - NO filtering, NO confidence scoring")
-        user_prompt_parts.append("3. Extract ALL data found - the pipeline will process it later")
-        user_prompt_parts.append("4. Robust error handling with metadata")
+        user_prompt_parts.append("1. DEFAULT_URLS list with 3-5 URLs total:")
+        if fields['data_source']:
+            user_prompt_parts.append(f"   - MUST include ALL user-provided URLs: {fields['data_source']}")
+            user_prompt_parts.append("   - ADD additional AI-suggested URLs to reach 3-5 total")
+        else:
+            user_prompt_parts.append("   - AI MUST suggest 3-5 relevant public URLs based on data requirements")
+        user_prompt_parts.append("2. Smart strategy detection (table > cards > generic)")
+        user_prompt_parts.append("3. RAW data extraction - NO filtering, NO confidence scoring")
+        user_prompt_parts.append("4. Extract ALL data found - the pipeline will process it later")
+        user_prompt_parts.append("5. Robust error handling with metadata")
         user_prompt_parts.append("\nReturn ONLY Python code.")
         
         messages = [
