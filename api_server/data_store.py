@@ -86,9 +86,13 @@ class DataStore:
         Raises:
             EndpointCreationError: If storage fails
         """
+        print(f"[DataStore] store_endpoint() called for id={endpoint_data.endpoint_id}")
         try:
             conn = self._get_connection()
             cursor = conn.cursor()
+            
+            json_data_str = json.dumps(endpoint_data.json_data, default=str)
+            print(f"[DataStore] JSON data size: {len(json_data_str)} bytes")
             
             cursor.execute('''
                 INSERT INTO endpoints (
@@ -97,7 +101,7 @@ class DataStore:
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 endpoint_data.endpoint_id,
-                json.dumps(endpoint_data.json_data, default=str),
+                json_data_str,
                 endpoint_data.metadata.description,
                 json.dumps(endpoint_data.metadata.source_urls),
                 endpoint_data.metadata.records_count,
@@ -107,9 +111,11 @@ class DataStore:
             ))
             
             conn.commit()
+            print(f"[DataStore] ✅ Endpoint {endpoint_data.endpoint_id} stored successfully")
             return endpoint_data.endpoint_id
             
         except sqlite3.Error as e:
+            print(f"[DataStore] ❌ SQLite error: {e}")
             raise EndpointCreationError(
                 f"Failed to store endpoint: {str(e)}",
                 details=str(e)

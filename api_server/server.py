@@ -175,10 +175,13 @@ class APIServer:
         self._server_thread: Optional[threading.Thread] = None
         self._server: Optional[uvicorn.Server] = None
         self._running = False
+        self._started_successfully = False
         
         # Set global data store reference
         _data_store = data_store
         _base_url = f"http://{self.host}:{self.port}"
+        
+        print(f"[APIServer] Initialized with host={self.host}, port={self.port}")
     
     def start(self) -> str:
         """
@@ -190,44 +193,65 @@ class APIServer:
         Raises:
             ServerStartError: If server fails to start
         """
-        if self._running:
+        print(f"[APIServer] start() called, _running={self._running}")
+        
+        if self._running and self._started_successfully:
+            print(f"[APIServer] Server already running at {self.get_base_url()}")
             return self.get_base_url()
         
         # Find available port
+        print(f"[APIServer] Finding available port starting from {self.port}...")
         actual_port = self._find_available_port()
         self.port = actual_port
+        print(f"[APIServer] Using port {self.port}")
         
         global _base_url
         _base_url = f"http://{self.host}:{self.port}"
         
-        # Configure uvicorn
+        # Configure uvicorn with keep-alive settings
         config = uvicorn.Config(
             app=app,
             host=self.host,
             port=self.port,
-            log_level="warning"
+            log_level="info",  # Changed to info for more visibility
+            access_log=True
         )
         self._server = uvicorn.Server(config)
         
-        # Start in background thread
+        # Start in background thread - daemon=False to keep it alive
+        print(f"[APIServer] Starting server thread...")
         self._server_thread = threading.Thread(
             target=self._run_server,
-            daemon=True
+            daemon=True,  # Daemon so it stops when main app stops
+            name="APIServerThread"
         )
         self._server_thread.start()
+        print(f"[APIServer] Server thread started (thread id: {self._server_thread.ident})")
         
         # Wait for server to start
         self._wait_for_startup()
         
         self._running = True
+        self._started_successfully = True
+        
         print(f"🚀 API Server started at {self.get_base_url()}")
         print(f"📚 API docs available at {self.get_base_url()}/docs")
+        print(f"[APIServer] Server is now accepting connections")
         
         return self.get_base_url()
     
     def _run_server(self):
         """Run the uvicorn server (called in background thread)."""
-        self._server.run()
+        print(f"[APIServer] _run_server() starting in thread {threading.current_thread().name}")
+        try:
+            self._server.run()
+            print(f"[APIServer] _run_server() completed normally")
+        except Exception as e:
+            print(f"[APIServer] _run_server() ERROR: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            print(f"[APIServer] _run_server() exiting")
     
     def _find_available_port(self) -> int:
         """Find an available port starting from configured port."""
@@ -284,14 +308,26 @@ class APIServer:
     
     def stop(self):
         """Stop the server gracefully."""
+        print(f"[APIServer] stop() called")
         if self._server and self._running:
             self._server.should_exit = True
             self._running = False
+            self._started_successfully = False
             print("🛑 API Server stopped")
+        else:
+            print(f"[APIServer] Server was not running (running={self._running})")
     
     def is_running(self) -> bool:
         """Check if server is currently running."""
-        return self._running
+        # Also check if thread is alive
+        thread_alive = self._server_thread is not None and self._server_thread.is_alive()
+        
+        if self._running and not thread_alive:
+            print(f"[APIServer] WARNING: _running=True but thread is dead!")
+            self._running = False
+            self._started_successfully = False
+        
+        return self._running and thread_alive
     
     def get_base_url(self) -> str:
         """Get the base URL of the server."""

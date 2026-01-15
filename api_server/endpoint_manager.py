@@ -51,18 +51,25 @@ class EndpointManager:
         Raises:
             EndpointCreationError: If data is invalid or storage fails
         """
+        print(f"[EndpointManager] create_endpoint() called")
+        
         # Validate input
         if parsed_response is None:
+            print(f"[EndpointManager] ERROR: ParsedDataResponse is None")
             raise EndpointCreationError("ParsedDataResponse cannot be None")
         
         if not parsed_response.data:
+            print(f"[EndpointManager] ERROR: ParsedDataResponse.data is empty")
             raise EndpointCreationError(
                 "ParsedDataResponse contains no data",
                 details="The data field is empty or None"
             )
         
+        print(f"[EndpointManager] Validated input - data has {len(str(parsed_response.data))} chars")
+        
         # Generate unique endpoint ID
         endpoint_id = DataStore.generate_endpoint_id()
+        print(f"[EndpointManager] Generated endpoint_id: {endpoint_id}")
         
         # Extract metadata from parsed response
         metadata = EndpointMetadata(
@@ -72,6 +79,7 @@ class EndpointManager:
             fields=parsed_response.metadata.fields_extracted,
             parsing_timestamp=parsed_response.metadata.timestamp
         )
+        print(f"[EndpointManager] Created metadata: records={metadata.records_count}, fields={len(metadata.fields)}")
         
         # Create endpoint data
         endpoint_data = EndpointData(
@@ -82,18 +90,23 @@ class EndpointManager:
         )
         
         # Store in database
+        print(f"[EndpointManager] Storing endpoint in database...")
         self.data_store.store_endpoint(endpoint_data)
+        print(f"[EndpointManager] Endpoint stored successfully")
         
         # Return endpoint info
         access_url = self.get_access_url(endpoint_id)
         
-        return EndpointInfo(
+        result = EndpointInfo(
             endpoint_id=endpoint_id,
             access_url=access_url,
             description=metadata.description,
             created_at=endpoint_data.created_at,
             records_count=metadata.records_count
         )
+        
+        print(f"[EndpointManager] ✅ Endpoint created: {access_url}")
+        return result
     
     def get_endpoint(self, endpoint_id: str) -> Optional[EndpointData]:
         """

@@ -184,19 +184,30 @@ render_header()
 # Show API Server status in sidebar
 with st.sidebar:
     st.subheader("🔌 API Server")
+    
+    # Debug info
+    print(f"[Sidebar] Checking API server status...")
+    print(f"[Sidebar] api_server_error={api_server_error}")
+    print(f"[Sidebar] api_server={api_server}")
+    print(f"[Sidebar] endpoint_manager={endpoint_manager}")
+    
     if api_server_error:
         st.error(f"❌ Server Error: {api_server_error}")
-        print(f"API Server Error displayed in sidebar: {api_server_error}")
+        print(f"[Sidebar] Displaying error: {api_server_error}")
     elif api_server is None:
         st.warning("⚠️ API Server not initialized")
+        print(f"[Sidebar] API Server is None")
     elif api_server.is_running():
-        st.success(f"✅ Running at {api_server.get_base_url()}")
-        st.markdown(f"[📚 API Docs]({api_server.get_base_url()}/docs)")
+        server_url = api_server.get_base_url()
+        st.success(f"✅ Running at {server_url}")
+        st.markdown(f"[📚 API Docs]({server_url}/docs)")
+        print(f"[Sidebar] Server running at {server_url}")
         
         # Show existing endpoints
         if endpoint_manager:
             try:
                 endpoints = endpoint_manager.list_endpoints()
+                print(f"[Sidebar] Found {len(endpoints)} endpoints")
                 if endpoints:
                     st.markdown("---")
                     st.subheader("📋 Your Endpoints")
@@ -210,9 +221,11 @@ with st.sidebar:
                                     st.success("Deleted!")
                                     st.rerun()
             except Exception as e:
+                print(f"[Sidebar] Error listing endpoints: {e}")
                 st.error(f"Error listing endpoints: {e}")
     else:
         st.warning("⚠️ Server not running")
+        print(f"[Sidebar] Server not running")
 
 # Render main form and get submission status
 form_data = render_api_form()
@@ -435,50 +448,7 @@ if form_data['submitted']:
                                         # Store parsed_response in session state for API endpoint creation
                                         st.session_state['last_parsed_response'] = parsed_response
                                         st.session_state['last_form_data'] = form_data
-                                        
-                                        # Add "Create API Endpoint" button
-                                        if endpoint_manager:
-                                            st.markdown("---")
-                                            st.subheader("🚀 Create API Endpoint")
-                                            st.write("Mount this data as a REST API endpoint for easy access.")
-                                            
-                                            col1, col2 = st.columns([3, 1])
-                                            with col1:
-                                                endpoint_desc = st.text_input(
-                                                    "Endpoint Description (optional)",
-                                                    value=form_data.get('data_description', '')[:100],
-                                                    key="endpoint_description"
-                                                )
-                                            with col2:
-                                                if st.button("🔗 Create Endpoint", type="primary"):
-                                                    try:
-                                                        print("\n" + "="*80)
-                                                        print("CREATING API ENDPOINT...")
-                                                        print("="*80)
-                                                        
-                                                        endpoint_info = endpoint_manager.create_endpoint(
-                                                            parsed_response=parsed_response,
-                                                            description=endpoint_desc
-                                                        )
-                                                        st.success(f"✅ API Endpoint Created!")
-                                                        st.code(endpoint_info.access_url, language="text")
-                                                        st.info(f"📊 {endpoint_info.records_count} records available at this endpoint")
-                                                        
-                                                        print(f"Endpoint ID: {endpoint_info.endpoint_id}")
-                                                        print(f"Access URL: {endpoint_info.access_url}")
-                                                        print(f"Records: {endpoint_info.records_count}")
-                                                        print("="*80 + "\n")
-                                                        
-                                                    except EndpointCreationError as e:
-                                                        print(f"EndpointCreationError: {e}")
-                                                        st.error(f"❌ Failed to create endpoint: {str(e)}")
-                                                    except Exception as e:
-                                                        import traceback
-                                                        print(f"Unexpected error creating endpoint: {e}")
-                                                        print(traceback.format_exc())
-                                                        st.error(f"❌ Error: {str(e)}")
-                                        else:
-                                            st.warning("⚠️ API Server not available. Cannot create endpoints.")
+                                        st.session_state['show_create_endpoint'] = True
                                         
                                     except (EmptyDataError, ParsingError) as e:
                                         print("\n" + "="*80)
@@ -514,6 +484,74 @@ if form_data['submitted']:
                         print(traceback.format_exc())
                         print("="*80 + "\n")
                         st.error(f"❌ Script execution failed: {str(e)}")
+
+# ============================================================================
+# API ENDPOINT CREATION SECTION (Outside form submission to handle button clicks)
+# ============================================================================
+if st.session_state.get('show_create_endpoint') and st.session_state.get('last_parsed_response'):
+    print("[CreateEndpoint] Session state has parsed response, showing create endpoint UI")
+    
+    if endpoint_manager:
+        st.markdown("---")
+        st.subheader("🚀 Create API Endpoint")
+        st.write("Mount this data as a REST API endpoint for easy access.")
+        
+        # Get description from session state
+        last_form_data = st.session_state.get('last_form_data', {})
+        default_desc = last_form_data.get('data_description', 'API Endpoint')[:100]
+        
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            endpoint_desc = st.text_input(
+                "Endpoint Description (optional)",
+                value=default_desc,
+                key="endpoint_description_input"
+            )
+        with col2:
+            st.write("")  # Spacer
+            st.write("")  # Spacer
+            create_clicked = st.button("🔗 Create Endpoint", type="primary", key="create_endpoint_btn")
+        
+        if create_clicked:
+            print("\n" + "="*80)
+            print("[CreateEndpoint] BUTTON CLICKED - Creating API endpoint...")
+            print("="*80)
+            
+            try:
+                parsed_response = st.session_state['last_parsed_response']
+                print(f"[CreateEndpoint] Got parsed_response from session state")
+                print(f"[CreateEndpoint] Data keys: {list(parsed_response.data.keys()) if parsed_response.data else 'None'}")
+                
+                endpoint_info = endpoint_manager.create_endpoint(
+                    parsed_response=parsed_response,
+                    description=endpoint_desc
+                )
+                
+                st.success(f"✅ API Endpoint Created Successfully!")
+                st.code(endpoint_info.access_url, language="text")
+                st.info(f"📊 {endpoint_info.records_count} records available at this endpoint")
+                st.balloons()
+                
+                print(f"[CreateEndpoint] ✅ SUCCESS!")
+                print(f"[CreateEndpoint] Endpoint ID: {endpoint_info.endpoint_id}")
+                print(f"[CreateEndpoint] Access URL: {endpoint_info.access_url}")
+                print(f"[CreateEndpoint] Records: {endpoint_info.records_count}")
+                print("="*80 + "\n")
+                
+                # Clear the flag so it doesn't show again after rerun
+                # st.session_state['show_create_endpoint'] = False
+                
+            except EndpointCreationError as e:
+                print(f"[CreateEndpoint] EndpointCreationError: {e}")
+                st.error(f"❌ Failed to create endpoint: {str(e)}")
+            except Exception as e:
+                import traceback
+                print(f"[CreateEndpoint] Unexpected error: {e}")
+                print(traceback.format_exc())
+                st.error(f"❌ Error: {str(e)}")
+    else:
+        st.warning("⚠️ API Server not available. Cannot create endpoints.")
+        print("[CreateEndpoint] endpoint_manager is None")
 
 # Footer
 st.markdown("---")
