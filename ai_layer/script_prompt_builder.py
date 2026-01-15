@@ -43,6 +43,22 @@ Our scraping layer uses:
 - **requests** library for HTTP requests
 - Parser: 'lxml' (NOT 'html.parser')
 
+## CRITICAL: HTTP HEADERS FOR AVOIDING 403 ERRORS
+
+**IMPORTANT**: Many sites (especially Wikipedia) block requests without proper headers.
+ALWAYS use these headers to avoid 403 Forbidden errors:
+
+```python
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+}
+```
+
 ## ARCHITECTURE REQUIREMENTS
 
 ### Design Philosophy
@@ -417,8 +433,14 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
         'error': None
     }
     
+    # Full headers to avoid 403 Forbidden errors (especially for Wikipedia)
     headers = {
-        'User-Agent': '[USER_AGENT]'
+        'User-Agent': '[USER_AGENT]',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
     }
     
     try:

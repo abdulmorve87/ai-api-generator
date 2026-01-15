@@ -183,6 +183,7 @@ def test_generated_script_structure():
             'validates_data': 'has_actual_data' in script_code,
             'has_default_urls': 'DEFAULT_URLS' in script_code,
             'includes_user_url': 'chittorgarh.com' in script_code,
+            'has_proper_headers': 'Accept' in script_code and 'Accept-Language' in script_code,
         }
         
         print("\nChecking generated script structure:")

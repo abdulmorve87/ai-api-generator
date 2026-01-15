@@ -13,7 +13,14 @@ from typing import Optional
 class NetworkConfig:
     """Network-related configuration."""
     request_timeout: int = 30  # seconds
-    user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    # Full User-Agent string that Wikipedia and other sites accept
+    # Wikipedia requires a descriptive User-Agent per their policy
+    user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36 "
+        "AIAPIGenerator/1.0 (Educational/Research Project; Contact: admin@example.com)"
+    )
     
     @classmethod
     def from_env(cls) -> 'NetworkConfig':

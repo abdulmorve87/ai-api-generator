@@ -1,21 +1,20 @@
 import requests
 from bs4 import BeautifulSoup
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 import datetime
 import re
 
 # ============================================================
-# DEFAULT URLs - MUST INCLUDE ALL USER-PROVIDED URLs FIRST
+# DEFAULT URLS (3-5 PUBLIC URLs)
 # ============================================================
-
+# 1. User-provided URL (MANDATORY)
+# 2-3. AI-suggested relevant public URLs for IPO GMP data
 DEFAULT_URLS = [
-    # User-provided URL (MANDATORY)
     'https://www.chittorgarh.com/report/ipo-grey-market-premium-gmp/73/',
-    # AI-suggested additional URLs for IPO GMP data
-    'https://www.ipowatch.in/p/ipo-grey-market-premium.html',
-    'https://www.ipo.gov.in/PublicIssueTracker/PublicIssueTracker',
-    'https://www.moneycontrol.com/ipo/ipo-gmp/',
-    'https://www.indiainfoline.com/ipo/ipo-grey-market-premium'
+    'https://www.ipo-watch.in/ipo-grey-market-premium/',
+    'https://ipowatch.in/ipo-gmp/',
+    'https://www.tradebrains.in/ipo-grey-market-premium/',
+    'https://www.5paisa.com/ipo/ipo-grey-market-premium'
 ]
 
 # ============================================================
@@ -178,19 +177,19 @@ def scrape_table_data(soup: BeautifulSoup, required_fields: List[str]) -> List[D
                         if href and not href.startswith('#') and not href.startswith('javascript:'):
                             record[f'{field_name}_link'] = href
             
-            # Map to required field names based on common patterns
+            # Map extracted fields to required field names based on header content
             mapped_record = {}
             for key, value in record.items():
-                lower_key = key.lower()
-                if 'company' in lower_key or 'name' in lower_key:
+                key_lower = key.lower()
+                if 'company' in key_lower or 'name' in key_lower:
                     mapped_record['company_name'] = value
-                elif 'price' in lower_key or 'issue' in lower_key:
+                elif 'price' in key_lower or 'issue' in key_lower:
                     mapped_record['ipo_price'] = value
-                elif 'gmp' in lower_key or 'premium' in lower_key:
+                elif 'gmp' in key_lower or 'premium' in key_lower:
                     mapped_record['gmp'] = value
-                elif 'date' in lower_key or 'listing' in lower_key:
+                elif 'date' in key_lower or 'listing' in key_lower:
                     mapped_record['listing_date'] = value
-                elif 'exchange' in lower_key or 'market' in lower_key:
+                elif 'exchange' in key_lower or 'bse' in key_lower or 'nse' in key_lower:
                     mapped_record['exchange'] = value
                 else:
                     mapped_record[key] = value
@@ -224,33 +223,25 @@ def scrape_card_data(soup: BeautifulSoup, required_fields: List[str]) -> List[Di
             if text and len(text) > 2:
                 record['company_name'] = text
         
-        # Extract IPO price
-        price_elem = card.select_one('[class*="price"], [class*="value"], [class*="amount"], [class*="ipo"]')
-        if price_elem:
-            text = get_text_safe(price_elem)
+        # Extract description for potential price/GMP info
+        desc_elem = card.select_one('p:not([class*="date"]), [class*="desc"], [class*="summary"]')
+        if desc_elem:
+            text = get_text_safe(desc_elem)
             if text:
-                record['ipo_price'] = text
+                # Try to extract price and GMP from description text
+                price_match = re.search(r'(?:₹|Rs\.?|INR)\s*[\d,]+(?:\.\d+)?', text)
+                if price_match:
+                    record['ipo_price'] = price_match.group(0)
+                gmp_match = re.search(r'GMP\s*[:\-]?\s*(?:₹|Rs\.?|INR)?\s*[\d,]+(?:\.\d+)?', text, re.IGNORECASE)
+                if gmp_match:
+                    record['gmp'] = gmp_match.group(0)
         
-        # Extract GMP
-        gmp_elem = card.select_one('[class*="gmp"], [class*="premium"]')
-        if gmp_elem:
-            text = get_text_safe(gmp_elem)
-            if text:
-                record['gmp'] = text
-        
-        # Extract listing date
-        date_elem = card.select_one('[class*="date"], time, [datetime], [class*="listing"]')
+        # Extract date
+        date_elem = card.select_one('[class*="date"], time, [datetime]')
         if date_elem:
             text = get_text_safe(date_elem) or get_attr_safe(date_elem, 'datetime')
             if text:
                 record['listing_date'] = text
-        
-        # Extract exchange
-        exchange_elem = card.select_one('[class*="exchange"], [class*="market"]')
-        if exchange_elem:
-            text = get_text_safe(exchange_elem)
-            if text:
-                record['exchange'] = text
         
         # Extract link
         link_elem = card.select_one('a[href]')
@@ -258,6 +249,23 @@ def scrape_card_data(soup: BeautifulSoup, required_fields: List[str]) -> List[Di
             href = get_attr_safe(link_elem, 'href')
             if href and not href.startswith('#') and len(href) > 1:
                 record['link'] = href
+        
+        # Extract price/value if present
+        price_elem = card.select_one('[class*="price"], [class*="value"], [class*="amount"]')
+        if price_elem:
+            text = get_text_safe(price_elem)
+            if text:
+                if 'gmp' in str(price_elem.get('class', '')).lower():
+                    record['gmp'] = text
+                else:
+                    record['ipo_price'] = text
+        
+        # Extract exchange if mentioned
+        exchange_elem = card.select_one('[class*="exchange"], [class*="bse"], [class*="nse"]')
+        if exchange_elem:
+            text = get_text_safe(exchange_elem)
+            if text:
+                record['exchange'] = text
         
         # Only add records with actual data
         if has_actual_data(record):
@@ -287,34 +295,35 @@ def scrape_generic(soup: BeautifulSoup, required_fields: List[str]) -> List[Dict
             
         record = {}
         
-        # Extract company name
-        title = get_text_safe(item.select_one('h1, h2, h3, h4, a, [class*="title"], [class*="name"]'))
+        title = get_text_safe(item.select_one('h1, h2, h3, h4, a, [class*="title"]'))
         if title and len(title) > 2:
             record['company_name'] = title
             
-        # Extract IPO price
-        price = get_text_safe(item.select_one('[class*="price"], [class*="value"], [class*="amount"]'))
-        if price:
-            record['ipo_price'] = price
+        desc = get_text_safe(item.select_one('p, [class*="desc"], span:not([class*="date"])'))
+        if desc and len(desc) > 5:
+            # Try to extract financial data from description
+            price_match = re.search(r'(?:₹|Rs\.?|INR)\s*[\d,]+(?:\.\d+)?', desc)
+            if price_match:
+                record['ipo_price'] = price_match.group(0)
+            gmp_match = re.search(r'GMP\s*[:\-]?\s*(?:₹|Rs\.?|INR)?\s*[\d,]+(?:\.\d+)?', desc, re.IGNORECASE)
+            if gmp_match:
+                record['gmp'] = gmp_match.group(0)
             
-        # Extract GMP
-        gmp = get_text_safe(item.select_one('[class*="gmp"], [class*="premium"]'))
-        if gmp:
-            record['gmp'] = gmp
-            
-        # Extract listing date
-        date = get_text_safe(item.select_one('[class*="date"], time, [class*="listing"]'))
+        date = get_text_safe(item.select_one('[class*="date"], time'))
         if date:
             record['listing_date'] = date
-            
-        # Extract exchange
-        exchange = get_text_safe(item.select_one('[class*="exchange"], [class*="market"]'))
-        if exchange:
-            record['exchange'] = exchange
             
         link = get_attr_safe(item.select_one('a'), 'href')
         if link and not link.startswith('#'):
             record['link'] = link
+        
+        # Check for exchange mentions
+        full_text = get_text_safe(item)
+        if 'BSE' in full_text or 'NSE' in full_text:
+            if 'BSE' in full_text:
+                record['exchange'] = 'BSE'
+            if 'NSE' in full_text:
+                record['exchange'] = 'NSE'
         
         if has_actual_data(record):
             data.append(record)
@@ -346,8 +355,14 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
         'error': None
     }
     
+    # Full headers to avoid 403 Forbidden errors
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 AIAPIGenerator/1.0 (Educational/Research Project; Contact: admin@example.com)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
     }
     
     try:
