@@ -56,5 +56,6 @@ cache/
 temp/
 sandbox/
 
-# Data
-data/
+
+# Database files
+*.db
