@@ -222,56 +222,54 @@ if form_data['submitted']:
                         print(f"URLs to scrape: {urls_to_try}")
                         print("="*80 + "\n")
                         
-                        # Try each URL, continue on failure
-                        all_data = []
-                        all_errors = []
-                        successful_url = None
-                        
-                        for target_url in urls_to_try:
-                            print(f"\n--- Trying URL: {target_url} ---")
-                            try:
-                                execution_result = executor.execute_code(
-                                    script_code=generated_script.script_code,
-                                    target_url=target_url
-                                )
-                                
-                                if execution_result.success and execution_result.data:
-                                    print(f"✓ Success! Got {len(execution_result.data)} records")
-                                    all_data.extend(execution_result.data)
-                                    if not successful_url:
-                                        successful_url = target_url
-                                elif execution_result.errors:
-                                    error_msg = f"{target_url}: {execution_result.errors[0]}"
-                                    print(f"✗ Failed: {error_msg}")
-                                    all_errors.append(error_msg)
+                        # Execute against all URLs using multi-source execution
+                        # This properly aggregates data from all sources
+                        if len(urls_to_try) > 1:
+                            # Use multi-source execution for multiple URLs
+                            execution_result = executor.execute_multi_source(
+                                script_code=generated_script.script_code,
+                                target_urls=urls_to_try
+                            )
+                            
+                            # Log individual source results
+                            for source_result in execution_result.source_results:
+                                if source_result.success:
+                                    print(f"--- Trying URL: {source_result.source_url} ---")
+                                    print(f"✓ Success! Got {source_result.record_count} records")
                                 else:
-                                    print(f"✗ No data returned from {target_url}")
-                                    all_errors.append(f"{target_url}: No data returned")
-                            except Exception as url_error:
-                                error_msg = f"{target_url}: {str(url_error)}"
-                                print(f"✗ Error: {error_msg}")
-                                all_errors.append(error_msg)
-                                continue  # Try next URL
+                                    print(f"--- Trying URL: {source_result.source_url} ---")
+                                    print(f"✗ Failed: {source_result.error}")
+                        else:
+                            # Single URL - use regular execution
+                            target_url = urls_to_try[0]
+                            print(f"--- Trying URL: {target_url} ---")
+                            execution_result = executor.execute_code(
+                                script_code=generated_script.script_code,
+                                target_url=target_url
+                            )
+                            if execution_result.success and execution_result.data:
+                                print(f"✓ Success! Got {len(execution_result.data)} records")
+                            else:
+                                print(f"✗ Failed: {execution_result.errors[0] if execution_result.errors else 'No data returned'}")
                         
                         # Print formatted results to console
                         print("\n" + "="*80)
                         print("SCRAPING EXECUTION RESULT")
                         print("="*80)
-                        if execution_result:
-                            formatted_output = formatter.format_result(execution_result)
-                            print(formatted_output)
+                        formatted_output = formatter.format_result(execution_result)
+                        print(formatted_output)
                         print("="*80 + "\n")
                         
                         # Show result summary on UI
-                        if all_data:
-                            st.success(f"✅ Scraping completed! Extracted {len(all_data)} records")
+                        if execution_result.success and execution_result.data:
+                            st.success(f"✅ Scraping completed! Extracted {len(execution_result.data)} records")
                             
                             # Show data preview in UI
                             st.subheader("📊 Extracted Data Preview")
                             
                             # Show first few records
                             import pandas as pd
-                            preview_data = all_data[:10]
+                            preview_data = execution_result.data[:10]
                             
                             # Clean up internal fields for display
                             clean_data = []
@@ -283,31 +281,35 @@ if form_data['submitted']:
                                 df = pd.DataFrame(clean_data)
                                 st.dataframe(df, use_container_width=True)
                             
-                            if len(all_data) > 10:
-                                st.info(f"Showing 10 of {len(all_data)} records. Check console for full output.")
+                            if len(execution_result.data) > 10:
+                                st.info(f"Showing 10 of {len(execution_result.data)} records. Check console for full output.")
                             
-                            # Show metadata if available
-                            if execution_result:
-                                with st.expander("📈 Execution Metadata"):
-                                    col1, col2, col3 = st.columns(3)
-                                    with col1:
-                                        st.metric("Total Records", len(all_data))
-                                    with col2:
-                                        st.metric("URLs Tried", len(urls_to_try))
-                                    with col3:
-                                        st.metric("Errors", len(all_errors))
-                                    
-                                    if successful_url:
-                                        st.write(f"**Successful URL:** {successful_url}")
-                                    st.write(f"**Scraping Method:** {execution_result.metadata.scraping_method}")
-                                    st.write(f"**Confidence:** {execution_result.metadata.confidence}")
+                            # Show metadata
+                            with st.expander("📈 Execution Metadata"):
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Total Records", len(execution_result.data))
+                                with col2:
+                                    st.metric("URLs Tried", len(urls_to_try))
+                                with col3:
+                                    st.metric("Errors", len(execution_result.errors))
+                                
+                                # Show source results if available
+                                if execution_result.source_results:
+                                    st.write("**Source Results:**")
+                                    for sr in execution_result.source_results:
+                                        status = "✓" if sr.success else "✗"
+                                        st.write(f"{status} {sr.source_url}: {sr.record_count} records ({sr.scraping_method}, {sr.confidence} confidence)")
+                                
+                                st.write(f"**Scraping Method:** {execution_result.metadata.scraping_method}")
+                                st.write(f"**Confidence:** {execution_result.metadata.confidence}")
                         else:
                             st.error(f"❌ Scraping failed for all URLs")
                             
                             # Show errors in expander
-                            if all_errors:
+                            if execution_result.errors:
                                 with st.expander("🔍 Error Details"):
-                                    for error in all_errors:
+                                    for error in execution_result.errors:
                                         st.error(error)
                         
                     except Exception as e:
