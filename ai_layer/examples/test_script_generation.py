@@ -16,8 +16,8 @@ from ai_layer.script_models import (
     GeneratedScript,
     ScriptValidationError
 )
-from ai_layer.script_validator import ScriptValidator
-from ai_layer.script_prompt_builder import ScriptPromptBuilder
+from ai_layer.script_prompt_builders.script_validator import ScriptValidator
+from ai_layer.script_prompt_builders.script_prompt_builder import ScriptPromptBuilder
 from scraping_layer.config import ScrapingConfig
 from datetime import datetime
 

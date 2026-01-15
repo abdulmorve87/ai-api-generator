@@ -12,8 +12,8 @@ from typing import Dict, Any, List
 import logging
 
 from ai_layer.deepseek_client import DeepSeekClient
-from ai_layer.script_prompt_builder import ScriptPromptBuilder
-from ai_layer.script_validator import ScriptValidator
+from ai_layer.script_prompt_builders.script_prompt_builder import ScriptPromptBuilder
+from ai_layer.script_prompt_builders.script_validator import ScriptValidator
 from ai_layer.input_processor import InputProcessor
 from ai_layer.script_models import (
     GeneratedScript, ScriptMetadata, ScriptValidationResult,
@@ -30,6 +30,8 @@ class ScraperScriptGenerator:
         self,
         deepseek_client: DeepSeekClient,
         scraping_config: ScrapingConfig,
+        prompt_builder: ScriptPromptBuilder = None,
+        validator: ScriptValidator = None,
         logger: logging.Logger = None
     ):
         """
@@ -38,12 +40,14 @@ class ScraperScriptGenerator:
         Args:
             deepseek_client: Configured DeepSeek API client
             scraping_config: Scraping layer configuration
+            prompt_builder: Optional custom prompt builder (defaults to standard)
+            validator: Optional custom validator (defaults to standard)
             logger: Optional logger instance
         """
         self.client = deepseek_client
         self.scraping_config = scraping_config
-        self.prompt_builder = ScriptPromptBuilder(scraping_config)
-        self.validator = ScriptValidator(logger)
+        self.prompt_builder = prompt_builder or ScriptPromptBuilder(scraping_config)
+        self.validator = validator or ScriptValidator(logger)
         self.logger = logger or logging.getLogger(__name__)
     
     def generate_script(

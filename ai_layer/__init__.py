@@ -50,8 +50,8 @@ from ai_layer.script_models import (
     ScriptGenerationError
 )
 from ai_layer.scraper_script_generator import ScraperScriptGenerator
-from ai_layer.script_validator import ScriptValidator
-from ai_layer.script_prompt_builder import ScriptPromptBuilder
+from ai_layer.script_prompt_builders.script_validator import ScriptValidator
+from ai_layer.script_prompt_builders.script_prompt_builder import ScriptPromptBuilder
 
 __all__ = [
     # Configuration

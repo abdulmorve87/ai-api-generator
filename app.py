@@ -17,6 +17,10 @@ from ai_layer import (
     InputStandardizer,
     StandardizedInput
 )
+from ai_layer.script_prompt_builders.script_prompt_builder import ScriptPromptBuilder
+from ai_layer.script_prompt_builders.script_validator import ScriptValidator
+from ai_layer.script_prompt_builders.light_script_propmt_builder import HTMLExtractorPromptBuilder
+from ai_layer.script_prompt_builders.light_script_validator import ScriptValidator as LightScriptValidator
 from scraping_layer.config import ScrapingConfig
 
 # Dynamic Execution imports (AI-Scraping Integration)
@@ -127,7 +131,20 @@ def initialize_ai_components():
         scraping_config = ScrapingConfig.from_env()
         
         client = DeepSeekClient(deepseek_config.api_key, deepseek_config.base_url)
-        script_generator = ScraperScriptGenerator(client, scraping_config)
+        
+        # Initialize standard (traditional) script generator
+        standard_prompt_builder = ScriptPromptBuilder(scraping_config)
+        standard_validator = ScriptValidator()
+        standard_script_generator = ScraperScriptGenerator(
+            client, scraping_config, standard_prompt_builder, standard_validator
+        )
+        
+        # Initialize light script generator
+        light_prompt_builder = HTMLExtractorPromptBuilder(scraping_config)
+        light_validator = LightScriptValidator()
+        light_script_generator = ScraperScriptGenerator(
+            client, scraping_config, light_prompt_builder, light_validator
+        )
         
         # Initialize the dynamic executor for running generated scripts
         execution_config = ExecutionConfig(timeout_seconds=60)
@@ -137,11 +154,11 @@ def initialize_ai_components():
         # Initialize the scraped data parser
         data_parser = ScrapedDataParser(client)
         
-        return script_generator, executor, formatter, data_parser, None
+        return standard_script_generator, light_script_generator, executor, formatter, data_parser, None
     except ConfigurationError as e:
-        return None, None, None, None, e
+        return None, None, None, None, None, e
 
-script_generator, executor, formatter, data_parser, config_error = initialize_ai_components()
+standard_script_generator, light_script_generator, executor, formatter, data_parser, config_error = initialize_ai_components()
 
 # Initialize API Server
 @st.cache_resource
@@ -290,16 +307,21 @@ if form_data['submitted']:
         # Check if script generator is available
         if config_error:
             render_error(config_error)
-        elif script_generator is None:
+        elif standard_script_generator is None or light_script_generator is None:
             st.error("⚠️ Script Generator not initialized. Please check your configuration.")
         else:
+            # Choose the appropriate script generator based on toggle
+            script_generator = light_script_generator if form_data.get('use_light_scraping', False) else standard_script_generator
+            scraping_mode = "Light Scraping (HTML + AI)" if form_data.get('use_light_scraping', False) else "Traditional Scraping (BeautifulSoup)"
+            
             # Show loading state
-            with st.spinner("🤖 AI is generating scraper script..."):
+            with st.spinner(f"🤖 AI is generating scraper script using {scraping_mode}..."):
                 try:
                     # Generate scraper script and print to console
                     print("\n" + "="*80)
                     print("GENERATING SCRAPER SCRIPT...")
                     print("="*80)
+                    print(f"Scraping Mode: {scraping_mode}")
                     print(f"Data Description: {form_data['data_description']}")
                     print(f"Data Source: {form_data.get('data_source', 'Not provided - AI will suggest URLs')}")
                     print(f"Desired Fields: {form_data.get('desired_fields', 'N/A')}")
@@ -333,7 +355,7 @@ if form_data['submitted']:
                     print("="*80 + "\n")
                     
                     # Show success message on UI
-                    st.success("✅ Scraper script generated successfully!")
+                    st.success(f"✅ Scraper script generated successfully using {scraping_mode}!")
                     
                 except Exception as e:
                     print("\n" + "="*80)

@@ -117,6 +117,14 @@ def render_api_form():
         )
         
         st.markdown("---")
+        
+        # Light Scraping Toggle
+        use_light_scraping = st.toggle(
+            "🪶 Toggle to use light scraping",
+            value=False,
+            help="Light scraping fetches raw HTML and uses AI for data extraction. Traditional scraping uses BeautifulSoup for parsing."
+        )
+        
         st.caption("* Required fields")
         
         # Submit button
@@ -129,4 +137,5 @@ def render_api_form():
         'desired_fields': desired_fields,
         'response_structure': response_structure,
         'update_frequency': update_frequency,
+        'use_light_scraping': use_light_scraping,
     }

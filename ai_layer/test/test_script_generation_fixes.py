@@ -13,7 +13,7 @@ import re
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from ai_layer.script_prompt_builder import ScriptPromptBuilder
+from ai_layer.script_prompt_builders.script_prompt_builder import ScriptPromptBuilder
 from ai_layer.deepseek_client import DeepSeekClient
 from ai_layer.config import DeepSeekConfig
 from scraping_layer.config import ScrapingConfig
