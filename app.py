@@ -458,13 +458,22 @@ if form_data['submitted']:
                                         print("PARSING SCRAPED DATA...")
                                         print("="*80)
                                         print(f"Records to parse: {len(execution_result.data)}")
-                                        print(f"User requirements: {form_data.get('desired_fields', 'N/A')}")
+                                        print(f"User requirements: {standardized_input.desired_fields}")
                                         print("="*80)
+                                        
+                                        # Convert standardized input to parser format
+                                        parser_requirements = {
+                                            'data_description': standardized_input.data_description,
+                                            'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
+                                            'desired_fields': '\n'.join(standardized_input.desired_fields),  # Convert list to newline-separated
+                                            'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
+                                            'update_frequency': standardized_input.update_frequency
+                                        }
                                         
                                         # Parse the scraped data
                                         parsed_response = data_parser.parse_scraped_data(
                                             scraping_result=execution_result,
-                                            user_requirements=form_data
+                                            user_requirements=parser_requirements
                                         )
                                         
                                         print("\n" + "="*80)

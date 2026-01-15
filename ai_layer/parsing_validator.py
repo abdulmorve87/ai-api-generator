@@ -152,10 +152,10 @@ class ParsingValidator:
     
     def _parse_field_list(self, fields_text: str) -> List[str]:
         """
-        Parse newline-separated field list.
+        Parse comma or newline-separated field list.
         
         Args:
-            fields_text: Newline-separated field names
+            fields_text: Comma or newline-separated field names
             
         Returns:
             List of field names
@@ -163,7 +163,9 @@ class ParsingValidator:
         if not fields_text:
             return []
         
-        return [f.strip() for f in fields_text.split('\n') if f.strip()]
+        # Split by both commas and newlines to handle both formats
+        fields = re.split(r'[,\n]', fields_text)
+        return [f.strip() for f in fields if f.strip()]
     
     def _validate_required_fields(
         self,

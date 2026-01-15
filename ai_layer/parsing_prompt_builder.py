@@ -67,20 +67,33 @@ CRITICAL RULES:
    - Maximum limit: {MAX_RECORDS_LIMIT} records (only truncate if exceeding this)
 3. Preserve data types: numbers as numbers, dates as ISO strings, text as strings
 4. Remove any HTML artifacts, special characters, or noise from values
+5. DO NOT add internal metadata fields like _source_url, _scraped_at, etc. to individual records
+   - Source information belongs in the top-level metadata section only
 
 FIELD HANDLING RULES:
-5. Important Fields provided by user:
+6. Important Fields provided by user:
    - Add these as keys in the JSON response
    - If data for a field is not found, set its value to null
    - These are NOT the only fields - also include other useful/relevant data from the scraped content
-   - Use the field names as keys only (ignore any example values the user may have provided)
+   - Use the field names EXACTLY as provided (they are already cleaned and validated)
+   - DO NOT modify field names or add punctuation
 
-6. JSON Structure Template (if provided by user):
+7. JSON Structure Template (if provided by user):
    - This is STRICT MODE - follow the structure EXACTLY
    - Add ALL keys from the user's JSON template to the response
    - If no data found for a key, use null as the value
    - DO NOT add any additional keys beyond what the user specified
    - This overrides the "include other useful data" rule
+
+DATA EXTRACTION QUALITY:
+8. Carefully analyze the scraped content structure to identify correct data mappings
+9. SEMANTIC CORRECTNESS IS CRITICAL - each field MUST contain the right type of data:
+   - "date" fields MUST contain actual dates (e.g., "2024-03-02", "02 Mar 2024"), NOT times or durations
+   - "time" or "duration" fields should contain race times, lap times, etc. (e.g., "1:20:43.273")
+   - "winner" or "driver" fields should contain driver names, NOT dates
+   - If a column header doesn't match the data type, analyze the actual values to determine correct mapping
+10. If a requested field name doesn't have matching data in the scraped content, set it to null rather than putting wrong data
+11. Date formatting: When extracting dates, convert to ISO format (YYYY-MM-DD) when possible, or preserve readable format (e.g., "02 Mar 2024")
 
 OUTPUT FORMAT (when NO JSON structure template provided):
 - Return a JSON object with a "data" key containing the extracted records array
@@ -152,16 +165,17 @@ EXAMPLE OUTPUT (no template):
         if has_strict_structure:
             prompt_parts.append("\n\nParse the above scraped data and return JSON following the EXACT structure provided. Use null for missing values. Return ONLY valid JSON, no explanations.")
         else:
-            prompt_parts.append("\n\nParse the above scraped data and return a structured JSON response. Include the important fields as keys (null if not found) plus any other useful data. Return ONLY valid JSON, no explanations.")
+            prompt_parts.append("\n\n⚠️ IMPORTANT: Analyze the scraped data carefully before mapping fields. Ensure 'date' fields contain actual dates (like '02 Mar 2024'), NOT times or durations. If a field cannot be correctly mapped, use null.")
+            prompt_parts.append("\nParse the above scraped data and return a structured JSON response. Include the important fields as keys (null if not found) plus any other useful data. Return ONLY valid JSON, no explanations.")
         
         return "\n".join(prompt_parts)
     
     def _parse_desired_fields(self, fields_text: str) -> List[str]:
         """
-        Parse newline-separated field list.
+        Parse comma or newline-separated field list.
         
         Args:
-            fields_text: Newline-separated field names
+            fields_text: Comma or newline-separated field names
             
         Returns:
             List of trimmed, non-empty field names
@@ -169,9 +183,13 @@ EXAMPLE OUTPUT (no template):
         if not fields_text:
             return []
         
+        # Split by both commas and newlines to handle both formats
+        import re
+        raw_fields = re.split(r'[,\n]', fields_text)
+        
         fields = []
-        for line in fields_text.split('\n'):
-            field = line.strip()
+        for field in raw_fields:
+            field = field.strip()
             if field:
                 fields.append(field)
         
