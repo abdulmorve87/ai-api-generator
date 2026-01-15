@@ -51,7 +51,7 @@ class ScraperScriptGenerator:
         form_input: Dict[str, Any],
         model: str = "deepseek-chat",
         temperature: float = 0.3,  # Lower for more deterministic code generation
-        max_tokens: int = 4000,
+        max_tokens: int = 8000,  # Increased to handle complex scripts without truncation
         max_retries: int = 2
     ) -> GeneratedScript:
         """
@@ -66,7 +66,7 @@ class ScraperScriptGenerator:
                 - update_frequency: str (required)
             model: DeepSeek model to use (default: "deepseek-chat")
             temperature: Sampling temperature (default: 0.3 for code)
-            max_tokens: Maximum tokens in response (default: 4000)
+            max_tokens: Maximum tokens in response (default: 8000)
             max_retries: Maximum generation retries on validation failure
             
         Returns:
