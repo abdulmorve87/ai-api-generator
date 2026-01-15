@@ -200,7 +200,6 @@ with st.sidebar:
     elif api_server.is_running():
         server_url = api_server.get_base_url()
         st.success(f"✅ Running at {server_url}")
-        st.markdown(f"[📚 API Docs]({server_url}/docs)")
         print(f"[Sidebar] Server running at {server_url}")
         
         # Show existing endpoints
@@ -212,8 +211,12 @@ with st.sidebar:
                     st.markdown("---")
                     st.subheader("📋 Your Endpoints")
                     for ep in endpoints:
-                        with st.expander(f"🔗 {ep.endpoint_id}"):
-                            st.write(f"**URL:** `{ep.access_url}`")
+                        # Show description as the main title
+                        display_title = ep.description if ep.description else ep.endpoint_id
+                        with st.expander(f"🔗 {display_title}"):
+                            # Make URL clickable
+                            st.markdown(f"**URL:** [{ep.access_url}]({ep.access_url})")
+                            st.write(f"**ID:** `{ep.endpoint_id}`")
                             st.write(f"**Records:** {ep.records_count}")
                             st.write(f"**Created:** {ep.created_at.strftime('%Y-%m-%d %H:%M')}")
                             if st.button("🗑️ Delete", key=f"del_{ep.endpoint_id}"):

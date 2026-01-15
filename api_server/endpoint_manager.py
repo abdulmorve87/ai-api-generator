@@ -67,8 +67,8 @@ class EndpointManager:
         
         print(f"[EndpointManager] Validated input - data has {len(str(parsed_response.data))} chars")
         
-        # Generate unique endpoint ID
-        endpoint_id = DataStore.generate_endpoint_id()
+        # Generate unique endpoint ID with keywords from description
+        endpoint_id = DataStore.generate_endpoint_id(description)
         print(f"[EndpointManager] Generated endpoint_id: {endpoint_id}")
         
         # Extract metadata from parsed response

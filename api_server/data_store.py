@@ -218,6 +218,44 @@ class DataStore:
             self._connection = None
     
     @staticmethod
-    def generate_endpoint_id() -> str:
-        """Generate a unique endpoint ID."""
+    def generate_endpoint_id(description: str = None) -> str:
+        """
+        Generate a unique endpoint ID with optional keywords from description.
+        
+        Args:
+            description: Optional description to extract keywords from
+            
+        Returns:
+            Endpoint ID in format: keyword1-keyword2-uuid (e.g., 'ipo-data-a3f2')
+        """
+        import re
+        
+        if description:
+            # Extract meaningful keywords from description
+            # Remove common words and keep only alphanumeric
+            stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
+                         'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be',
+                         'this', 'that', 'these', 'those', 'what', 'which', 'who', 'when',
+                         'where', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more',
+                         'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own',
+                         'same', 'so', 'than', 'too', 'very', 'can', 'will', 'just', 'should',
+                         'now', 'get', 'list', 'data', 'api', 'endpoint'}
+            
+            # Clean and tokenize
+            words = re.findall(r'\b[a-zA-Z]+\b', description.lower())
+            
+            # Filter meaningful words (length > 2, not stop words)
+            keywords = [w for w in words if len(w) > 2 and w not in stop_words]
+            
+            # Take first 2-3 keywords
+            selected_keywords = keywords[:3] if len(keywords) >= 3 else keywords[:2]
+            
+            if selected_keywords:
+                # Create keyword prefix
+                keyword_prefix = '-'.join(selected_keywords)
+                # Add short unique suffix
+                unique_suffix = str(uuid.uuid4())[:4]
+                return f"{keyword_prefix}-{unique_suffix}"
+        
+        # Fallback to UUID if no description or no keywords found
         return str(uuid.uuid4())[:8]
