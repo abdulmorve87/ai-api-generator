@@ -76,21 +76,21 @@ if form_data['submitted']:
         # Show loading state with progress
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         try:
             status_text.text("🔧 Initializing AI layer...")
             progress_bar.progress(10)
-            
+
             status_text.text("🤖 Sending request to DeepSeek AI...")
             progress_bar.progress(30)
-            
+
             # Generate response using AI Layer (DeepSeek)
             ai_generated_data = generate_response(form_data)
-            
+
             progress_bar.progress(90)
             status_text.text("✅ Processing response...")
             progress_bar.progress(100)
-            
+
             # Clear progress indicators
             progress_bar.empty()
             status_text.empty()
@@ -99,81 +99,92 @@ if form_data['submitted']:
             status_text.empty()
             st.error(f"❌ Error: {str(e)}")
             st.stop()
+
+        # Check if AI generation was successful
+        if ai_generated_data.get("status") == "error":
+            st.error(f"❌ AI Generation Error: {ai_generated_data.get('message', 'Unknown error')}")
+            if ai_generated_data.get('raw'):
+                st.code(ai_generated_data.get('raw', 'No raw output'), language="text")
+        else:
+            # Extract data from AI response
+            response_data = ai_generated_data.get("response", {})
+            data_items = response_data.get("data", [])
+
+            # If data is a dict, convert to list
+            if isinstance(data_items, dict):
+                data_items = [data_items]
             
-            # Check if AI generation was successful
-            if ai_generated_data.get("status") == "error":
-                st.error(f"❌ AI Generation Error: {ai_generated_data.get('message', 'Unknown error')}")
-                if ai_generated_data.get('raw'):
-                    st.code(ai_generated_data.get('raw', 'No raw output'), language="text")
-            else:
-                # Extract data from AI response
-                response_data = ai_generated_data.get("response", {})
-                data_items = response_data.get("data", [])
-                
-                # If data is a dict, convert to list
-                if isinstance(data_items, dict):
-                    data_items = [data_items]
-                
-                # Generate API name from description
-                api_name = form_data.get('data_description', 'data').lower()
-                api_name = ''.join(c if c.isalnum() else '_' for c in api_name)[:50]
-                
-                # Infer schema from data
-                schema = {"type": "object", "properties": {}}
-                if data_items and len(data_items) > 0:
-                    first_item = data_items[0]
-                    schema_properties = {}
-                    for key, value in first_item.items():
-                        if isinstance(value, int):
-                            schema_properties[key] = {"type": "integer", "description": key.replace("_", " ").title()}
-                        elif isinstance(value, float):
-                            schema_properties[key] = {"type": "number", "description": key.replace("_", " ").title()}
-                        elif isinstance(value, bool):
-                            schema_properties[key] = {"type": "boolean", "description": key.replace("_", " ").title()}
-                        elif isinstance(value, list):
-                            schema_properties[key] = {"type": "array", "description": key.replace("_", " ").title()}
-                        else:
-                            schema_properties[key] = {"type": "string", "description": key.replace("_", " ").title()}
-                    schema["properties"] = schema_properties
-                
-                # Send to API server if it's running
-                if server_status:
-                    try:
-                        api_payload = {
-                            "api_name": api_name,
-                            "description": form_data.get('data_description', 'AI Generated API'),
-                            "data": data_items,
-                            "schema": schema,
-                            "data_source": "DeepSeek AI",
-                            "update_frequency": form_data.get('update_frequency', 'on-demand')
-                        }
-                        
-                        result = ai_integration.receive_ai_data(api_payload)
-                        
-                        if result["status"] == "success":
-                            st.success(f"✅ API created successfully!")
-                            # Update endpoint to use the actual API server
-                            ai_generated_data["endpoint"] = f"{API_SERVER_URL}{result.get('api_endpoint', '')}"
-                        else:
-                            st.warning(f"⚠️ Could not store in API server: {result.get('message', 'Unknown error')}")
-                    except Exception as e:
-                        st.warning(f"⚠️ Could not connect to API server: {e}")
-                
-                # Render success message
-                render_success_box()
-                
-                # Display endpoint
-                st.subheader("🔗 Your API Endpoint")
-                render_endpoint_box(ai_generated_data.get("endpoint", "https://api.example.com/data"))
-                
-                # Show AI provider info
-                st.info(f"🤖 **Generated by**: DeepSeek AI | **Stored in**: API Server Database")
-                
-                # Render results tabs
-                render_results_tabs(ai_generated_data, form_data)
-                
-                # Render download section
-                render_download_section(ai_generated_data)
+            # Apply desired fields filtering only if provided
+            desired_fields_text = (form_data.get("desired_fields") or "").strip()
+            if desired_fields_text:
+                desired_field_list = [line.strip() for line in desired_fields_text.split("\n") if line.strip()]
+                if desired_field_list:
+                    filtered_items = []
+                    for item in data_items:
+                        if isinstance(item, dict):
+                            filtered_items.append({k: item.get(k) for k in desired_field_list})
+                    data_items = filtered_items
+
+            # Generate API name from description
+            api_name = form_data.get('data_description', 'data').lower()
+            api_name = ''.join(c if c.isalnum() else '_' for c in api_name)[:50]
+
+            # Infer schema from data
+            schema = {"type": "object", "properties": {}}
+            if data_items and len(data_items) > 0:
+                first_item = data_items[0]
+                schema_properties = {}
+                for key, value in first_item.items():
+                    if isinstance(value, int):
+                        schema_properties[key] = {"type": "integer", "description": key.replace("_", " ").title()}
+                    elif isinstance(value, float):
+                        schema_properties[key] = {"type": "number", "description": key.replace("_", " ").title()}
+                    elif isinstance(value, bool):
+                        schema_properties[key] = {"type": "boolean", "description": key.replace("_", " ").title()}
+                    elif isinstance(value, list):
+                        schema_properties[key] = {"type": "array", "description": key.replace("_", " ").title()}
+                    else:
+                        schema_properties[key] = {"type": "string", "description": key.replace("_", " ").title()}
+                schema["properties"] = schema_properties
+
+            # Send to API server if it's running
+            if server_status:
+                try:
+                    api_payload = {
+                        "api_name": api_name,
+                        "description": form_data.get('data_description', 'AI Generated API'),
+                        "data": data_items,
+                        "schema": schema,
+                        "data_source": "DeepSeek AI",
+                        "update_frequency": form_data.get('update_frequency', 'on-demand')
+                    }
+
+                    result = ai_integration.receive_ai_data(api_payload)
+
+                    if result["status"] == "success":
+                        st.success(f"✅ API created successfully!")
+                        # Update endpoint to use the actual API server
+                        ai_generated_data["endpoint"] = f"{API_SERVER_URL}{result.get('api_endpoint', '')}"
+                    else:
+                        st.warning(f"⚠️ Could not store in API server: {result.get('message', 'Unknown error')}")
+                except Exception as e:
+                    st.warning(f"⚠️ Could not connect to API server: {e}")
+
+            # Render success message
+            render_success_box()
+
+            # Display endpoint
+            st.subheader("🔗 Your API Endpoint")
+            render_endpoint_box(ai_generated_data.get("endpoint", "https://api.example.com/data"))
+
+            # Show AI provider info
+            st.info(f"🤖 **Generated by**: DeepSeek AI | **Stored in**: API Server Database")
+
+            # Render results tabs
+            render_results_tabs(ai_generated_data, form_data)
+
+            # Render download section
+            render_download_section(ai_generated_data)
 
 # Footer
 st.markdown("---")

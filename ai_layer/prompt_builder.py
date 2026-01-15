@@ -11,11 +11,11 @@ from ai_layer.input_processor import InputProcessor
 class PromptBuilder:
     """Builds prompts for the DeepSeek API from form inputs."""
     
-    SYSTEM_PROMPT = """You are a high-performance API response generator. Generate large, realistic JSON datasets with 10-15 fields per record.
+    SYSTEM_PROMPT = """You are a high-performance API response generator.
 
 CRITICAL REQUIREMENTS:
-1. Generate 50-100 records minimum (scale based on user request)
-2. Each record MUST have 10-15 fields with diverse, realistic data
+1. Generate all records (scale based on user request)
+2. Each record MUST have 5-7 fields with diverse, realistic data
 3. Return ONLY valid, parseable JSON - NO markdown, NO code blocks, NO text
 4. Use your most current and accurate knowledge for realistic data
 5. Optimize for speed - generate efficiently without unnecessary processing
@@ -29,90 +29,80 @@ PERFORMANCE: Generate quickly. Output pure JSON immediately. Start with { and en
     def build_prompt(form_input: Dict[str, Any]) -> List[Dict[str, str]]:
         """
         Construct prompt messages for DeepSeek API from form inputs.
-        
-        Args:
-            form_input: Dictionary containing:
-                - data_description: str (required)
-                - data_source: str (optional)
-                - desired_fields: str (optional, newline-separated)
-                - response_structure: str (optional, JSON string)
-                - update_frequency: str (required)
-                
-        Returns:
-            List of message dictionaries with 'role' and 'content'
         """
-        # Extract and validate fields
         fields = InputProcessor.extract_form_fields(form_input)
-        
-        # Build user prompt
-        user_prompt_parts = []
-        
-        # Add data description with emphasis on field count
+
+        user_prompt_parts: List[str] = []
+
         user_prompt_parts.append(f"GENERATE: {fields['data_description']}")
-        user_prompt_parts.append("FIELD COUNT: Each record must have 10-15 fields minimum")
-        
-        # Add explicit record count instruction
-        user_prompt_parts.append("RECORD COUNT: Generate 50-100 records (or quantity specified in description)")
-        
-        # Add data source with accuracy emphasis
+        user_prompt_parts.append("FIELD COUNT: Each record must have 5-7 fields")
+        user_prompt_parts.append("RECORD COUNT: Generate all records")
+        user_prompt_parts.append(
+            "RECORD COUNT: If the request is a single fact/person/current value, generate EXACTLY 1 record. "
+            "Otherwise generate all records."
+        )
+        user_prompt_parts.append("UNIQUENESS: All records must be distinct. Do not repeat identical records.")
+
         if fields['data_source']:
             user_prompt_parts.append(f"DATA SOURCE: {fields['data_source']}")
-            user_prompt_parts.append("DATA ACCURACY: Use your most current, accurate knowledge for this domain. Generate realistic, contextually appropriate values.")
+            user_prompt_parts.append(
+                "DATA ACCURACY: Use your most current, accurate knowledge for this domain. "
+                "Generate realistic, contextually appropriate values."
+            )
         else:
             user_prompt_parts.append("DATA ACCURACY: Use accurate, realistic data from your knowledge base.")
-        
-        # Add update frequency context
+
         user_prompt_parts.append(f"UPDATE FREQUENCY: {fields['update_frequency']}")
-        
-        # Parse and add desired fields if provided
+
         if fields['desired_fields']:
             field_list = InputProcessor.parse_fields(fields['desired_fields'])
             if field_list:
                 user_prompt_parts.append(f"REQUIRED FIELDS: {', '.join(field_list)}")
-                
-                # If fewer than 10 fields specified, add instruction to include more
-                if len(field_list) < 10:
-                    user_prompt_parts.append(f"ADDITIONAL FIELDS: Add {10 - len(field_list)} more relevant fields to reach 10-15 total fields per record.")
-                
+
+                if len(field_list) < 3:
+                    user_prompt_parts.append(
+                        f"ADDITIONAL FIELDS: Add {3 - len(field_list)} more relevant fields to reach 3-5 total fields per record."
+                    )
+
                 user_prompt_parts.append("Include ALL specified fields in EVERY record with appropriate data types.")
         else:
-            user_prompt_parts.append("FIELDS: Generate 10-15 relevant fields per record based on the data description.")
-        
-        # Add structure instructions
+            user_prompt_parts.append("FIELDS: Generate 5-7 relevant fields per record based on the data description.")
+
+        default_structure = (
+            "STRUCTURE:\n"
+            "{\n"
+            '  "data": [],\n'
+            '  "metadata": {\n'
+            '    "total_count": 0,\n'
+            f'    "update_frequency": "{fields["update_frequency"]}",\n'
+            '    "last_updated": "1970-01-01T00:00:00Z",\n'
+            '    "data_source": "unknown"\n'
+            "  }\n"
+            "}"
+        )
+
         if fields['response_structure']:
-            # Validate JSON structure
-            structure = InputProcessor.validate_json_structure(fields['response_structure'])
-            user_prompt_parts.append(f"STRUCTURE:\n{fields['response_structure']}")
-            user_prompt_parts.append("Follow this structure. Ensure 10-15 fields per record. Scale data array to 50-100+ records.")
+            try:
+                InputProcessor.validate_json_structure(fields['response_structure'])
+                user_prompt_parts.append(f"STRUCTURE:\n{fields['response_structure']}")
+                user_prompt_parts.append(
+                    "Follow this structure. Ensure 5-7 fields per record. Scale data array to all records."
+                )
+            except Exception:
+                user_prompt_parts.append(default_structure)
         else:
-            # Use default structure with emphasis on field count
-            user_prompt_parts.append(
-                "STRUCTURE:\n"
-                "{\n"
-                '  "data": [\n'
-                "    // 50-100+ records, each with 10-15 fields\n"
-                "  ],\n"
-                '  "metadata": {\n'
-                '    "total_count": <actual_record_count>,\n'
-                '    "fields_per_record": <actual_field_count>,\n'
-                f'    "update_frequency": "{fields["update_frequency"]}",\n'
-                '    "last_updated": "<ISO_8601_timestamp>",\n'
-                '    "data_source": "<source_name>"\n'
-                "  }\n"
-                "}"
-            )
-        
-        # Add performance and accuracy optimization
+            user_prompt_parts.append(default_structure)
+
         user_prompt_parts.append("\nOPTIMIZATION:")
         user_prompt_parts.append("- Generate efficiently for fast response")
         user_prompt_parts.append("- Use accurate, realistic data from your knowledge")
         user_prompt_parts.append("- Return pure JSON immediately - no explanations")
         user_prompt_parts.append("- Ensure valid JSON syntax (proper quotes, commas, brackets)")
-        
-        # Construct messages
+        user_prompt_parts.append("- Do not include comments or placeholder tokens like <...> or // ...")
+
         messages = [
             {"role": "system", "content": PromptBuilder.SYSTEM_PROMPT},
             {"role": "user", "content": "\n\n".join(user_prompt_parts)}
         ]
-        
+
         return messages
