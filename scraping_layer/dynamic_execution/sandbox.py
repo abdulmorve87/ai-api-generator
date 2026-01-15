@@ -97,12 +97,19 @@ class ScriptSandbox:
         self._validate_ast(script_code)
         
         # Step 4: Create safe execution environment
+        # CRITICAL: Use the same dict for both globals and locals!
+        # When exec() uses separate dicts, top-level defs go into locals,
+        # but when functions run, they only see globals - not the outer locals.
+        # This causes "name 'detect_scraping_strategy' is not defined" errors
+        # because helper functions defined at module level aren't visible
+        # to other functions when they execute.
         safe_globals = self._create_safe_globals()
-        safe_locals = {}
         
         # Step 5: Execute the script to define functions
+        # Using safe_globals for BOTH globals and locals ensures all
+        # top-level definitions are in the same namespace
         try:
-            exec(script_code, safe_globals, safe_locals)
+            exec(script_code, safe_globals, safe_globals)
         except Exception as e:
             raise SecurityError(
                 f"Script execution failed during definition: {str(e)}",
@@ -110,16 +117,12 @@ class ScriptSandbox:
             )
         
         # Step 6: Find and call the entry function
-        if entry_function not in safe_locals:
-            # Check if it's in globals (for module-level functions)
-            if entry_function not in safe_globals:
-                raise SecurityError(
-                    f"Entry function '{entry_function}' not found in script",
-                    forbidden_operation="missing_function"
-                )
-            func = safe_globals[entry_function]
-        else:
-            func = safe_locals[entry_function]
+        if entry_function not in safe_globals:
+            raise SecurityError(
+                f"Entry function '{entry_function}' not found in script",
+                forbidden_operation="missing_function"
+            )
+        func = safe_globals[entry_function]
         
         if not callable(func):
             raise SecurityError(

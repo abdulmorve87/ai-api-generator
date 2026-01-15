@@ -13,6 +13,87 @@ from ai_layer import (
 )
 from scraping_layer.config import ScrapingConfig
 
+# Dynamic Execution imports (AI-Scraping Integration)
+from scraping_layer.dynamic_execution import (
+    AIScrapingIntegration,
+    DynamicScriptExecutor,
+    ConsoleOutputFormatter,
+    ExecutionConfig
+)
+
+import re
+
+def _extract_url_from_script(script_code: str) -> str:
+    """
+    Extract a suggested URL from the generated script's DEFAULT_URLS list or comments.
+    
+    AI-generated scripts should include a DEFAULT_URLS list at the top like:
+    DEFAULT_URLS = ['https://example.com/data', 'https://other.com/info']
+    
+    Returns:
+        First valid URL found, or empty string if none found
+    """
+    # Pattern to match DEFAULT_URLS list - highest priority
+    default_urls_pattern = r'DEFAULT_URLS\s*=\s*\[(.*?)\]'
+    match = re.search(default_urls_pattern, script_code, re.DOTALL)
+    if match:
+        urls_content = match.group(1)
+        # Extract URLs from the list
+        url_matches = re.findall(r'[\'\"](https?://[^\s\'\"\,]+)[\'\"]\s*,?', urls_content)
+        for url in url_matches:
+            url = url.strip().rstrip('.,;:\'\"')
+            # Skip placeholder/example URLs
+            if 'example.com' not in url and 'example-' not in url and url.startswith('http'):
+                return url
+    
+    # Fallback patterns for URLs in comments or assignments
+    url_patterns = [
+        # Match URLs in comments with dash prefix (common format)
+        r'#\s*-?\s*(https?://[^\s<>]+)',
+        # Match test_url or example_url assignments
+        r'(?:test_url|example_url|url)\s*=\s*[\'"](https?://[^\s<>]+)[\'"]',
+        # Match any URL in quotes
+        r'[\'"](https?://[^\s<>]+)[\'"]',
+    ]
+    
+    for pattern in url_patterns:
+        matches = re.findall(pattern, script_code, re.IGNORECASE)
+        for match in matches:
+            url = match.strip().rstrip('.,;:\'\"')
+            # Skip example.com and sites that require auth
+            skip_domains = ['example.com', 'example-', 'goodreads.com', 'amazon.com']
+            if any(domain in url for domain in skip_domains):
+                continue
+            if url.startswith('http'):
+                return url
+    
+    return ''
+
+
+def _extract_all_urls_from_script(script_code: str) -> list:
+    """
+    Extract all URLs from the generated script's DEFAULT_URLS list.
+    
+    Returns:
+        List of valid URLs found
+    """
+    urls = []
+    
+    # Pattern to match DEFAULT_URLS list
+    default_urls_pattern = r'DEFAULT_URLS\s*=\s*\[(.*?)\]'
+    match = re.search(default_urls_pattern, script_code, re.DOTALL)
+    if match:
+        urls_content = match.group(1)
+        # Extract URLs from the list
+        url_matches = re.findall(r'[\'\"](https?://[^\s\'\"\,]+)[\'\"]\s*,?', urls_content)
+        for url in url_matches:
+            url = url.strip().rstrip('.,;:\'\"')
+            # Skip placeholder/example URLs
+            if 'example.com' not in url and 'example-' not in url and url.startswith('http'):
+                urls.append(url)
+    
+    return urls
+
 # Page configuration
 st.set_page_config(
     page_title="AI API Generator",
@@ -34,11 +115,16 @@ def initialize_ai_components():
         client = DeepSeekClient(deepseek_config.api_key, deepseek_config.base_url)
         script_generator = ScraperScriptGenerator(client, scraping_config)
         
-        return script_generator, None
+        # Initialize the dynamic executor for running generated scripts
+        execution_config = ExecutionConfig(timeout_seconds=60)
+        executor = DynamicScriptExecutor(execution_config)
+        formatter = ConsoleOutputFormatter(use_colors=False, max_records_display=20)
+        
+        return script_generator, executor, formatter, None
     except ConfigurationError as e:
-        return None, e
+        return None, None, None, e
 
-script_generator, config_error = initialize_ai_components()
+script_generator, executor, formatter, config_error = initialize_ai_components()
 
 # Render header
 render_header()
@@ -96,8 +182,8 @@ if form_data['submitted']:
                     print(f"Model: {generated_script.metadata.model}")
                     print("="*80 + "\n")
                     
-                    # Show success message on UI (no JSON response)
-                    st.success("✅ Scraper script generated! Check console for output.")
+                    # Show success message on UI
+                    st.success("✅ Scraper script generated successfully!")
                     
                 except Exception as e:
                     print("\n" + "="*80)
@@ -106,6 +192,133 @@ if form_data['submitted']:
                     print(f"Error: {str(e)}")
                     print("="*80 + "\n")
                     render_error(e)
+                    generated_script = None
+            
+            # Execute the generated script if valid
+            if generated_script and generated_script.is_valid and executor:
+                with st.spinner("🔄 Executing scraper script..."):
+                    try:
+                        print("\n" + "="*80)
+                        print("EXECUTING SCRAPER SCRIPT...")
+                        print("="*80)
+                        
+                        # Get target URLs from form or extract from script
+                        user_url = form_data.get('data_source', '').strip()
+                        script_urls = _extract_all_urls_from_script(generated_script.script_code)
+                        
+                        # Build list of URLs to try
+                        urls_to_try = []
+                        if user_url:
+                            urls_to_try.append(user_url)
+                        urls_to_try.extend(script_urls)
+                        
+                        if not urls_to_try:
+                            print("No target URL provided or found in script")
+                            print("="*80 + "\n")
+                            st.warning("⚠️ No target URL provided. Please enter a data source URL to scrape.")
+                            st.info("💡 Tip: The generated script is ready. Add a URL in the 'Data Source' field and submit again.")
+                            raise ValueError("No target URL available for scraping")
+                        
+                        print(f"URLs to scrape: {urls_to_try}")
+                        print("="*80 + "\n")
+                        
+                        # Try each URL, continue on failure
+                        all_data = []
+                        all_errors = []
+                        successful_url = None
+                        
+                        for target_url in urls_to_try:
+                            print(f"\n--- Trying URL: {target_url} ---")
+                            try:
+                                execution_result = executor.execute_code(
+                                    script_code=generated_script.script_code,
+                                    target_url=target_url
+                                )
+                                
+                                if execution_result.success and execution_result.data:
+                                    print(f"✓ Success! Got {len(execution_result.data)} records")
+                                    all_data.extend(execution_result.data)
+                                    if not successful_url:
+                                        successful_url = target_url
+                                elif execution_result.errors:
+                                    error_msg = f"{target_url}: {execution_result.errors[0]}"
+                                    print(f"✗ Failed: {error_msg}")
+                                    all_errors.append(error_msg)
+                                else:
+                                    print(f"✗ No data returned from {target_url}")
+                                    all_errors.append(f"{target_url}: No data returned")
+                            except Exception as url_error:
+                                error_msg = f"{target_url}: {str(url_error)}"
+                                print(f"✗ Error: {error_msg}")
+                                all_errors.append(error_msg)
+                                continue  # Try next URL
+                        
+                        # Print formatted results to console
+                        print("\n" + "="*80)
+                        print("SCRAPING EXECUTION RESULT")
+                        print("="*80)
+                        if execution_result:
+                            formatted_output = formatter.format_result(execution_result)
+                            print(formatted_output)
+                        print("="*80 + "\n")
+                        
+                        # Show result summary on UI
+                        if all_data:
+                            st.success(f"✅ Scraping completed! Extracted {len(all_data)} records")
+                            
+                            # Show data preview in UI
+                            st.subheader("📊 Extracted Data Preview")
+                            
+                            # Show first few records
+                            import pandas as pd
+                            preview_data = all_data[:10]
+                            
+                            # Clean up internal fields for display
+                            clean_data = []
+                            for record in preview_data:
+                                clean_record = {k: v for k, v in record.items() if not k.startswith('_')}
+                                clean_data.append(clean_record)
+                            
+                            if clean_data:
+                                df = pd.DataFrame(clean_data)
+                                st.dataframe(df, use_container_width=True)
+                            
+                            if len(all_data) > 10:
+                                st.info(f"Showing 10 of {len(all_data)} records. Check console for full output.")
+                            
+                            # Show metadata if available
+                            if execution_result:
+                                with st.expander("📈 Execution Metadata"):
+                                    col1, col2, col3 = st.columns(3)
+                                    with col1:
+                                        st.metric("Total Records", len(all_data))
+                                    with col2:
+                                        st.metric("URLs Tried", len(urls_to_try))
+                                    with col3:
+                                        st.metric("Errors", len(all_errors))
+                                    
+                                    if successful_url:
+                                        st.write(f"**Successful URL:** {successful_url}")
+                                    st.write(f"**Scraping Method:** {execution_result.metadata.scraping_method}")
+                                    st.write(f"**Confidence:** {execution_result.metadata.confidence}")
+                        else:
+                            st.error(f"❌ Scraping failed for all URLs")
+                            
+                            # Show errors in expander
+                            if all_errors:
+                                with st.expander("🔍 Error Details"):
+                                    for error in all_errors:
+                                        st.error(error)
+                        
+                    except Exception as e:
+                        print("\n" + "="*80)
+                        print("SCRIPT EXECUTION FAILED")
+                        print("="*80)
+                        print(f"Error: {str(e)}")
+                        import traceback
+                        print(traceback.format_exc())
+                        print("="*80 + "\n")
+                        st.error(f"❌ Script execution failed: {str(e)}")
 
 # Footer
 st.markdown("---")

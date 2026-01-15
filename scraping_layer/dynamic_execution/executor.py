@@ -109,6 +109,9 @@ class DynamicScriptExecutor:
         if target_url:
             self.logger.info(f"[{script_id}] Target URL: {target_url}")
         
+        # Preprocess script to remove if __name__ == '__main__' block
+        script_code = self._preprocess_script(script_code)
+        
         # Initialize result structure
         metadata = ExecutionMetadata(
             script_id=script_id,
@@ -240,6 +243,59 @@ class DynamicScriptExecutor:
             raise result_container['error']
         
         return result_container['result']
+    
+    def _preprocess_script(self, script_code: str) -> str:
+        """
+        Preprocess script to remove problematic sections and fix namespace issues.
+        
+        This removes the `if __name__ == '__main__':` block which often
+        contains `import sys` and other code not needed for direct execution.
+        Also fixes datetime import to avoid namespace conflicts in sandbox.
+        
+        Args:
+            script_code: Original Python code
+            
+        Returns:
+            Cleaned Python code safe for sandbox execution
+        """
+        import re
+        
+        # Remove the if __name__ == '__main__': block entirely
+        # This pattern matches the block and everything indented under it
+        patterns = [
+            # Match: if __name__ == '__main__':
+            r"if\s+__name__\s*==\s*['\"]__main__['\"]\s*:\s*\n(?:[ \t]+.+\n?)*",
+            # Match: if __name__ == "__main__":
+            r'if\s+__name__\s*==\s*["\']__main__["\']\s*:\s*\n(?:[ \t]+.+\n?)*',
+        ]
+        
+        cleaned_code = script_code
+        for pattern in patterns:
+            cleaned_code = re.sub(pattern, '', cleaned_code, flags=re.MULTILINE)
+        
+        # Remove any standalone `import sys` that might be at module level
+        cleaned_code = re.sub(r'^import\s+sys\s*$', '', cleaned_code, flags=re.MULTILINE)
+        cleaned_code = re.sub(r'^from\s+sys\s+import\s+.+$', '', cleaned_code, flags=re.MULTILINE)
+        
+        # Fix datetime namespace conflict:
+        # Replace "from datetime import datetime" with "import datetime"
+        # and "datetime.utcnow()" with "datetime.datetime.utcnow()"
+        if 'from datetime import datetime' in cleaned_code:
+            cleaned_code = re.sub(
+                r'^from\s+datetime\s+import\s+datetime\s*$',
+                'import datetime',
+                cleaned_code,
+                flags=re.MULTILINE
+            )
+            # Fix all datetime.method() calls to datetime.datetime.method()
+            # But avoid double-fixing datetime.datetime.method()
+            cleaned_code = re.sub(
+                r'\bdatetime\.(?!datetime\.)(\w+)\(',
+                r'datetime.datetime.\1(',
+                cleaned_code
+            )
+        
+        return cleaned_code.strip()
     
     def _process_success_result(
         self,

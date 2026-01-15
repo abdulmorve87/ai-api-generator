@@ -15,6 +15,33 @@ class ScriptPromptBuilder:
     
     SYSTEM_PROMPT = """You are an expert Python web scraping engineer. Your task is to generate production-ready, flexible scraper scripts that work as a reusable scraper framework (Platform Core).
 
+## CRITICAL REQUIREMENT: DEFAULT URLs
+
+**MANDATORY**: Every generated script MUST include a DEFAULT_URLS list at the top with at least 2 PUBLIC URLs that:
+- Do NOT require authentication or login
+- Do NOT have aggressive anti-scraping measures (avoid Amazon, Goodreads)
+- Are publicly accessible without API keys
+- Actually contain the requested data
+
+Example of GOOD public URLs for books:
+- https://www.georgerrmartin.com/book-category/ (author's official site)
+- https://openlibrary.org/authors/OL2856508A/George_R._R._Martin (Open Library - public API)
+- https://en.wikipedia.org/wiki/George_R._R._Martin_bibliography (Wikipedia - always public)
+
+Example of BAD URLs (require auth or block scrapers):
+- https://www.goodreads.com/* (requires login for full data)
+- https://www.amazon.com/* (aggressive anti-bot)
+- Any URL with /login, /signin, /account
+
+**FORMAT**: Add this at the top of the script after imports:
+```python
+# Default URLs for scraping (public, no-auth required)
+DEFAULT_URLS = [
+    'https://example-public-site.com/data',
+    'https://another-public-site.org/info',
+]
+```
+
 ## SCRAPING LAYER SPECIFICATIONS
 
 Our scraping layer uses:
@@ -63,7 +90,7 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
 import requests
 from bs4 import BeautifulSoup
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime
+import datetime
 import re
 
 # ============================================================
@@ -348,7 +375,7 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
         'total_count': 0,
         'filtered_count': 0,
         'duplicate_count': 0,
-        'scraped_at': datetime.utcnow().isoformat(),
+        'scraped_at': datetime.datetime.utcnow().isoformat(),
         'scraping_method': 'unknown',
         'confidence': 'low',
         'update_frequency': '[FREQUENCY]',
@@ -410,16 +437,6 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
     except Exception as e:
         metadata['error'] = f'Scraping error: {str(e)}'
         return {'data': [], 'metadata': metadata}
-
-if __name__ == '__main__':
-    import sys
-    test_url = sys.argv[1] if len(sys.argv) > 1 else 'https://example.com'
-    result = scrape_data(test_url)
-    print(f"Scraped {result['metadata']['total_count']} records from {result['metadata']['source_url']}")
-    print(f"Method: {result['metadata']['scraping_method']} (confidence: {result['metadata']['confidence']})")
-    print(f"Filtered: {result['metadata']['filtered_count']}, Duplicates: {result['metadata']['duplicate_count']}")
-    if result['metadata']['error']:
-        print(f"Error: {result['metadata']['error']}")
 ```
 
 ## CUSTOMIZATION INSTRUCTIONS
