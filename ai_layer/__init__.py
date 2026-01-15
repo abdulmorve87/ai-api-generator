@@ -18,6 +18,21 @@ from ai_layer.exceptions import (
     ValidationError,
     GenerationError
 )
+
+# Parsing models and exceptions
+from ai_layer.parsing_models import (
+    ParsedDataResponse,
+    ParsingMetadata,
+    EmptyDataError,
+    ParsingError,
+    DataExtractionError
+)
+
+# Scraped data parser components
+from ai_layer.scraped_data_parser import ScrapedDataParser
+from ai_layer.data_extractor import DataExtractor
+from ai_layer.parsing_prompt_builder import ParsingPromptBuilder
+from ai_layer.parsing_validator import ParsingValidator
 from ai_layer.models import GeneratedResponse, ResponseMetadata
 from ai_layer.deepseek_client import DeepSeekClient
 from ai_layer.response_generator import AIResponseGenerator
@@ -61,4 +76,15 @@ __all__ = [
     'ScraperScriptGenerator',
     'ScriptValidator',
     'ScriptPromptBuilder',
+    # Parsing models and exceptions
+    'ParsedDataResponse',
+    'ParsingMetadata',
+    'EmptyDataError',
+    'ParsingError',
+    'DataExtractionError',
+    # Scraped data parser components
+    'ScrapedDataParser',
+    'DataExtractor',
+    'ParsingPromptBuilder',
+    'ParsingValidator',
 ]

@@ -2,14 +2,17 @@ import streamlit as st
 from utils.ui_components import render_header
 from utils.styles import load_custom_css
 from components.form import render_api_form
-from components.results import render_error
+from components.results import render_error, render_parsed_response
 
 # AI Layer imports
 from ai_layer import (
     DeepSeekConfig,
     DeepSeekClient,
     ScraperScriptGenerator,
-    ConfigurationError
+    ConfigurationError,
+    ScrapedDataParser,
+    EmptyDataError,
+    ParsingError
 )
 from scraping_layer.config import ScrapingConfig
 
@@ -107,7 +110,7 @@ load_custom_css()
 # Initialize AI Layer (with error handling for missing API key)
 @st.cache_resource
 def initialize_ai_components():
-    """Initialize the Script Generator with configuration."""
+    """Initialize the Script Generator and Data Parser with configuration."""
     try:
         deepseek_config = DeepSeekConfig.from_env()
         scraping_config = ScrapingConfig.from_env()
@@ -120,11 +123,14 @@ def initialize_ai_components():
         executor = DynamicScriptExecutor(execution_config)
         formatter = ConsoleOutputFormatter(use_colors=False, max_records_display=20)
         
-        return script_generator, executor, formatter, None
+        # Initialize the scraped data parser
+        data_parser = ScrapedDataParser(client)
+        
+        return script_generator, executor, formatter, data_parser, None
     except ConfigurationError as e:
-        return None, None, None, e
+        return None, None, None, None, e
 
-script_generator, executor, formatter, config_error = initialize_ai_components()
+script_generator, executor, formatter, data_parser, config_error = initialize_ai_components()
 
 # Render header
 render_header()
@@ -312,6 +318,57 @@ if form_data['submitted']:
                                 
                                 st.write(f"**Scraping Method:** {execution_result.metadata.scraping_method}")
                                 st.write(f"**Confidence:** {execution_result.metadata.confidence}")
+                            
+                            # NEW: Parse scraped data into structured JSON
+                            if data_parser:
+                                st.markdown("---")
+                                with st.spinner("🤖 AI is parsing scraped data into structured JSON..."):
+                                    try:
+                                        print("\n" + "="*80)
+                                        print("PARSING SCRAPED DATA...")
+                                        print("="*80)
+                                        print(f"Records to parse: {len(execution_result.data)}")
+                                        print(f"User requirements: {form_data.get('desired_fields', 'N/A')}")
+                                        print("="*80)
+                                        
+                                        # Parse the scraped data
+                                        parsed_response = data_parser.parse_scraped_data(
+                                            scraping_result=execution_result,
+                                            user_requirements=form_data
+                                        )
+                                        
+                                        print("\n" + "="*80)
+                                        print("DATA PARSED SUCCESSFULLY")
+                                        print("="*80)
+                                        print(f"Records parsed: {parsed_response.metadata.records_parsed}")
+                                        print(f"Fields extracted: {', '.join(parsed_response.metadata.fields_extracted)}")
+                                        print(f"Parsing time: {parsed_response.metadata.parsing_time_ms}ms")
+                                        print("="*80)
+                                        print("PARSED JSON OUTPUT:")
+                                        print("="*80)
+                                        import json
+                                        print(json.dumps(parsed_response.data, indent=2, default=str))
+                                        print("="*80 + "\n")
+                                        
+                                        # Render the parsed response in UI
+                                        render_parsed_response(parsed_response)
+                                        
+                                    except (EmptyDataError, ParsingError) as e:
+                                        print("\n" + "="*80)
+                                        print("DATA PARSING FAILED")
+                                        print("="*80)
+                                        print(f"Error: {str(e)}")
+                                        print("="*80 + "\n")
+                                        render_error(e)
+                                    except Exception as e:
+                                        print("\n" + "="*80)
+                                        print("DATA PARSING FAILED")
+                                        print("="*80)
+                                        print(f"Error: {str(e)}")
+                                        import traceback
+                                        print(traceback.format_exc())
+                                        print("="*80 + "\n")
+                                        st.error(f"❌ Data parsing failed: {str(e)}")
                         else:
                             st.error(f"❌ Scraping failed for all URLs")
                             

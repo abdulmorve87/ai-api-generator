@@ -334,6 +334,11 @@ def render_error(error):
         ScriptValidationError,
         ScriptGenerationError
     )
+    from ai_layer.parsing_models import (
+        EmptyDataError,
+        ParsingError,
+        DataExtractionError
+    )
     
     # Determine error type and customize message
     if isinstance(error, ConfigurationError):
@@ -468,6 +473,47 @@ def render_error(error):
         - Check [DeepSeek Status](https://status.deepseek.com) for service updates
         """)
     
+    elif isinstance(error, EmptyDataError):
+        st.error("📭 No Data Found")
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        **How to fix:**
+        - Verify the data source URL is correct and accessible
+        - Check if the website structure has changed
+        - Try a different data source URL
+        - Ensure the scraper is targeting the correct page elements
+        """)
+    
+    elif isinstance(error, ParsingError):
+        st.error("🔄 Parsing Error")
+        details = getattr(error, 'details', None)
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        {f"**Details:** {details}" if details else ""}
+        
+        **How to fix:**
+        - Try simplifying your field requirements
+        - Provide a clearer response structure template
+        - Reduce the number of fields requested
+        - Try again (AI responses can vary)
+        """)
+    
+    elif isinstance(error, DataExtractionError):
+        st.error("📄 Data Extraction Error")
+        data_format = getattr(error, 'data_format', None)
+        st.markdown(f"""
+        **Error:** {str(error)}
+        
+        {f"**Data Format:** {data_format}" if data_format else ""}
+        
+        **How to fix:**
+        - Check if the scraped data format is supported
+        - Verify the data source returns valid content
+        - Try a different data source
+        """)
+    
     else:
         st.error("❌ Unexpected Error")
         st.markdown(f"""
@@ -486,3 +532,78 @@ def render_error(error):
         if hasattr(error, '__traceback__'):
             import traceback
             st.code(traceback.format_exc())
+
+
+# Scraped Data Parser UI Components
+
+def render_parsed_response(response):
+    """
+    Display the parsed data response with formatting and actions.
+    
+    Args:
+        response: ParsedDataResponse object from ai_layer
+    """
+    st.success("✅ Data Parsed Successfully!")
+    
+    # Display the parsed JSON
+    st.subheader("📊 Structured JSON Response")
+    st.json(response.data)
+    
+    # Action buttons
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Download data only
+        st.download_button(
+            label="📥 Download JSON",
+            data=response.get_data_only_json(),
+            file_name="parsed_data.json",
+            mime="application/json",
+            help="Download the parsed JSON data"
+        )
+    
+    with col2:
+        # Download with metadata
+        st.download_button(
+            label="💾 Download with Metadata",
+            data=response.to_json(),
+            file_name="parsed_data_with_metadata.json",
+            mime="application/json",
+            help="Download the complete response with metadata"
+        )
+    
+    # Display metadata in an expander
+    with st.expander("📈 Parsing Metadata", expanded=False):
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Records Parsed", response.metadata.records_parsed)
+        
+        with col2:
+            st.metric("Fields Extracted", len(response.metadata.fields_extracted))
+        
+        with col3:
+            st.metric("Parsing Time", f"{response.metadata.parsing_time_ms}ms")
+        
+        with col4:
+            st.metric("Model", response.metadata.model)
+        
+        # Show extracted fields
+        if response.metadata.fields_extracted:
+            st.markdown("**Extracted Fields:**")
+            st.markdown(", ".join(f"`{f}`" for f in response.metadata.fields_extracted))
+        
+        # Show data sources
+        if response.metadata.data_sources:
+            st.markdown("**Data Sources:**")
+            for url in response.metadata.data_sources:
+                st.markdown(f"- {url}")
+        
+        # Show source metadata if available
+        if response.source_metadata:
+            st.markdown("**Source Metadata:**")
+            st.json(response.source_metadata)
+        
+        # Show raw output for debugging
+        if st.checkbox("Show raw AI output", key="parsed_raw_output"):
+            st.code(response.raw_ai_output, language="json")

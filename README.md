@@ -32,6 +32,16 @@ python test_scraper.py https://example.com title=h1 description=p
 - **Error Handling** - Clear error messages with troubleshooting hints
 - **UI Integration** - Display generated responses with metadata
 
+### ✅ Scraped Data Parser (Phase 2 Complete)
+
+- **Scraping Integration** - Receives raw data from scraping layer
+- **AI-Powered Parsing** - Uses DeepSeek to intelligently parse scraped data
+- **User Requirements Mapping** - Transforms data based on user-specified fields
+- **JSON Structure Compliance** - Follows user-provided structure templates
+- **Automatic Validation** - Validates parsed output meets requirements
+- **Retry Logic** - Automatic retry on parsing failures
+- **UI Display** - Shows structured JSON with download options
+
 ### ✅ Universal Scraping Layer (Task 1 Complete)
 
 - **Static website scraping** - HTTP requests + BeautifulSoup
@@ -79,7 +89,12 @@ AI API Generator
 │   ├── 📄 input_processor.py      # Form input processing
 │   ├── 📄 response_validator.py   # JSON validation
 │   ├── 📄 models.py                # Data models
-│   └── 📄 exceptions.py            # Custom exceptions
+│   ├── 📄 exceptions.py            # Custom exceptions
+│   ├── 📄 scraped_data_parser.py  # Scraped data parser
+│   ├── 📄 data_extractor.py       # Data extraction utilities
+│   ├── 📄 parsing_prompt_builder.py # Parsing prompts
+│   ├── 📄 parsing_validator.py    # Parsing validation
+│   └── 📄 parsing_models.py       # Parsing data models
 ├── 🕷️ scraping_layer/              # Universal Scraping Layer
 │   ├── 📄 README.md                # Scraping layer docs
 │   ├── 📄 engine.py                # Main orchestrator
@@ -270,11 +285,11 @@ export SCRAPING_CACHE_TTL=3600
 ## 🤝 How It Works
 
 1. **📝 User Input** - Describe data needs in natural language
-2. **🤖 AI Analysis** - Extract URLs, fields, and scraping strategy
+2. **🤖 AI Script Generation** - Generate scraper script based on requirements
 3. **🕷️ Web Scraping** - Execute scraping with appropriate strategy
-4. **🧹 Data Cleaning** - Normalize and validate extracted data
-5. **🚀 API Generation** - Create REST endpoints serving the data
-6. **📊 Monitoring** - Track performance and data quality
+4. **🔄 AI Data Parsing** - Parse scraped data into structured JSON
+5. **📊 JSON Output** - Display structured response matching user requirements
+6. **💾 Export** - Download parsed JSON data
 
 ## 📄 License
 
