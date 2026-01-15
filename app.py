@@ -346,8 +346,12 @@ if form_data['submitted']:
             
             # Execute the generated script if valid
             if generated_script and generated_script.is_valid and executor:
-                with st.spinner("🔄 Executing scraper script..."):
-                    try:
+                # Execute with spinner, then display results outside spinner
+                execution_result = None
+                urls_to_try = []
+                
+                try:
+                    with st.spinner("🔄 Executing scraper script..."):
                         print("\n" + "="*80)
                         print("EXECUTING SCRAPER SCRIPT...")
                         print("="*80)
@@ -357,7 +361,6 @@ if form_data['submitted']:
                         script_urls = _extract_all_urls_from_script(generated_script.script_code)
                         
                         # Build list of URLs to try (user URL first, then script URLs, avoiding duplicates)
-                        urls_to_try = []
                         seen_urls = set()
                         
                         # Add user URL first (highest priority)
@@ -418,133 +421,131 @@ if form_data['submitted']:
                         formatted_output = formatter.format_result(execution_result)
                         print(formatted_output)
                         print("="*80 + "\n")
+                    
+                    # Show result summary on UI (OUTSIDE spinner context)
+                    if execution_result and execution_result.success and execution_result.data:
+                        st.success(f"✅ Scraping completed! Extracted {len(execution_result.data)} records")
                         
-                        # Show result summary on UI
-                        if execution_result.success and execution_result.data:
-                            st.success(f"✅ Scraping completed! Extracted {len(execution_result.data)} records")
+                        # Show data preview in UI
+                        st.subheader("📊 Extracted Data Preview")
+                        
+                        # Show first few records
+                        import pandas as pd
+                        preview_data = execution_result.data[:10]
+                        
+                        # Clean up internal fields for display
+                        clean_data = []
+                        for record in preview_data:
+                            clean_record = {k: v for k, v in record.items() if not k.startswith('_')}
+                            clean_data.append(clean_record)
+                        
+                        if clean_data:
+                            df = pd.DataFrame(clean_data)
+                            st.dataframe(df, use_container_width=True)
+                        
+                        if len(execution_result.data) > 10:
+                            st.info(f"Showing 10 of {len(execution_result.data)} records. Check console for full output.")
+                        
+                        # Show metadata
+                        with st.expander("📈 Execution Metadata"):
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Total Records", len(execution_result.data))
+                            with col2:
+                                st.metric("URLs Tried", len(urls_to_try))
+                            with col3:
+                                st.metric("Errors", len(execution_result.errors))
                             
-                            # Show data preview in UI
-                            st.subheader("📊 Extracted Data Preview")
+                            # Show source results if available
+                            if execution_result.source_results:
+                                st.write("**Source Results:**")
+                                for sr in execution_result.source_results:
+                                    status = "✓" if sr.success else "✗"
+                                    st.write(f"{status} {sr.source_url}: {sr.record_count} records ({sr.scraping_method}, {sr.confidence} confidence)")
                             
-                            # Show first few records
-                            import pandas as pd
-                            preview_data = execution_result.data[:10]
+                            st.write(f"**Scraping Method:** {execution_result.metadata.scraping_method}")
+                            st.write(f"**Confidence:** {execution_result.metadata.confidence}")
+                        
+                        # NEW: Parse scraped data into structured JSON
+                        if data_parser:
+                            st.markdown("---")
                             
-                            # Clean up internal fields for display
-                            clean_data = []
-                            for record in preview_data:
-                                clean_record = {k: v for k, v in record.items() if not k.startswith('_')}
-                                clean_data.append(clean_record)
-                            
-                            if clean_data:
-                                df = pd.DataFrame(clean_data)
-                                st.dataframe(df, use_container_width=True)
-                            
-                            if len(execution_result.data) > 10:
-                                st.info(f"Showing 10 of {len(execution_result.data)} records. Check console for full output.")
-                            
-                            # Show metadata
-                            with st.expander("📈 Execution Metadata"):
-                                col1, col2, col3 = st.columns(3)
-                                with col1:
-                                    st.metric("Total Records", len(execution_result.data))
-                                with col2:
-                                    st.metric("URLs Tried", len(urls_to_try))
-                                with col3:
-                                    st.metric("Errors", len(execution_result.errors))
-                                
-                                # Show source results if available
-                                if execution_result.source_results:
-                                    st.write("**Source Results:**")
-                                    for sr in execution_result.source_results:
-                                        status = "✓" if sr.success else "✗"
-                                        st.write(f"{status} {sr.source_url}: {sr.record_count} records ({sr.scraping_method}, {sr.confidence} confidence)")
-                                
-                                st.write(f"**Scraping Method:** {execution_result.metadata.scraping_method}")
-                                st.write(f"**Confidence:** {execution_result.metadata.confidence}")
-                            
-                            # NEW: Parse scraped data into structured JSON
-                            if data_parser:
-                                st.markdown("---")
-                                
-                                # Use a container to ensure spinner closes properly
-                                parsing_container = st.container()
-                                
-                                with parsing_container:
-                                    with st.spinner("🤖 AI is parsing scraped data into structured JSON..."):
-                                        try:
-                                            print("\n" + "="*80)
-                                            print("PARSING SCRAPED DATA...")
-                                            print("="*80)
-                                            print(f"Records to parse: {len(execution_result.data)}")
-                                            print(f"User requirements: {standardized_input.desired_fields}")
-                                            print("="*80)
-                                            
-                                            # Convert standardized input to parser format
-                                            parser_requirements = {
-                                                'data_description': standardized_input.data_description,
-                                                'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
-                                                'desired_fields': '\n'.join(standardized_input.desired_fields),  # Convert list to newline-separated
-                                                'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
-                                                'update_frequency': standardized_input.update_frequency
-                                            }
-                                            
-                                            # Parse the scraped data
-                                            parsed_response = data_parser.parse_scraped_data(
-                                                scraping_result=execution_result,
-                                                user_requirements=parser_requirements
-                                            )
-                                            
-                                            print("\n" + "="*80)
-                                            print("DATA PARSED SUCCESSFULLY")
-                                            print("="*80)
-                                            print(f"Records parsed: {parsed_response.metadata.records_parsed}")
-                                            print(f"Fields extracted: {', '.join(parsed_response.metadata.fields_extracted)}")
-                                            print(f"Parsing time: {parsed_response.metadata.parsing_time_ms}ms")
-                                            print("="*80)
-                                            print("PARSED JSON OUTPUT:")
-                                            print("="*80)
-                                            import json
-                                            print(json.dumps(parsed_response.data, indent=2, default=str))
-                                            print("="*80 + "\n")
-                                            
-                                        except (EmptyDataError, ParsingError) as e:
-                                            print("\n" + "="*80)
-                                            print("DATA PARSING FAILED")
-                                            print("="*80)
-                                            print(f"Error: {str(e)}")
-                                            print("="*80 + "\n")
-                                            render_error(e)
-                                            parsed_response = None
-                                        except Exception as e:
-                                            print("\n" + "="*80)
-                                            print("DATA PARSING FAILED")
-                                            print("="*80)
-                                            print(f"Error: {str(e)}")
-                                            import traceback
-                                            print(traceback.format_exc())
-                                            print("="*80 + "\n")
-                                            st.error(f"❌ Data parsing failed: {str(e)}")
-                                            parsed_response = None
+                            # Parse with spinner
+                            parsed_response = None
+                            with st.spinner("🤖 AI is parsing scraped data into structured JSON..."):
+                                try:
+                                    print("\n" + "="*80)
+                                    print("PARSING SCRAPED DATA...")
+                                    print("="*80)
+                                    print(f"Records to parse: {len(execution_result.data)}")
+                                    print(f"User requirements: {standardized_input.desired_fields}")
+                                    print("="*80)
                                     
-                                    # Render results OUTSIDE the spinner context
-                                    if parsed_response:
-                                        render_parsed_response(parsed_response)
-                                        
-                                        # Store parsed_response in session state for API endpoint creation
-                                        st.session_state['last_parsed_response'] = parsed_response
-                                        st.session_state['last_form_data'] = form_data
-                                        st.session_state['show_create_endpoint'] = True
-                        else:
-                            st.error(f"❌ Scraping failed for all URLs")
+                                    # Convert standardized input to parser format
+                                    parser_requirements = {
+                                        'data_description': standardized_input.data_description,
+                                        'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
+                                        'desired_fields': '\n'.join(standardized_input.desired_fields),  # Convert list to newline-separated
+                                        'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
+                                        'update_frequency': standardized_input.update_frequency
+                                    }
+                                    
+                                    # Parse the scraped data
+                                    parsed_response = data_parser.parse_scraped_data(
+                                        scraping_result=execution_result,
+                                        user_requirements=parser_requirements
+                                    )
+                                    
+                                    print("\n" + "="*80)
+                                    print("DATA PARSED SUCCESSFULLY")
+                                    print("="*80)
+                                    print(f"Records parsed: {parsed_response.metadata.records_parsed}")
+                                    print(f"Fields extracted: {', '.join(parsed_response.metadata.fields_extracted)}")
+                                    print(f"Parsing time: {parsed_response.metadata.parsing_time_ms}ms")
+                                    print("="*80)
+                                    print("PARSED JSON OUTPUT:")
+                                    print("="*80)
+                                    import json
+                                    print(json.dumps(parsed_response.data, indent=2, default=str))
+                                    print("="*80 + "\n")
+                                    
+                                except (EmptyDataError, ParsingError) as e:
+                                    print("\n" + "="*80)
+                                    print("DATA PARSING FAILED")
+                                    print("="*80)
+                                    print(f"Error: {str(e)}")
+                                    print("="*80 + "\n")
+                                    render_error(e)
+                                    parsed_response = None
+                                except Exception as e:
+                                    print("\n" + "="*80)
+                                    print("DATA PARSING FAILED")
+                                    print("="*80)
+                                    print(f"Error: {str(e)}")
+                                    import traceback
+                                    print(traceback.format_exc())
+                                    print("="*80 + "\n")
+                                    st.error(f"❌ Data parsing failed: {str(e)}")
+                                    parsed_response = None
                             
-                            # Show errors in expander
-                            if execution_result.errors:
-                                with st.expander("🔍 Error Details"):
-                                    for error in execution_result.errors:
-                                        st.error(error)
+                            # Render results OUTSIDE the spinner context
+                            if parsed_response:
+                                render_parsed_response(parsed_response)
+                                
+                                # Store parsed_response in session state for API endpoint creation
+                                st.session_state['last_parsed_response'] = parsed_response
+                                st.session_state['last_form_data'] = form_data
+                                st.session_state['show_create_endpoint'] = True
+                    elif execution_result:
+                        st.error(f"❌ Scraping failed for all URLs")
                         
-                    except Exception as e:
+                        # Show errors in expander
+                        if execution_result.errors:
+                            with st.expander("🔍 Error Details"):
+                                for error in execution_result.errors:
+                                    st.error(error)
+                    
+                except Exception as e:
                         print("\n" + "="*80)
                         print("SCRIPT EXECUTION FAILED")
                         print("="*80)
