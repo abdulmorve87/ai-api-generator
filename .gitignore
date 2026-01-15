@@ -44,5 +44,5 @@ Thumbs.db
 # Logs
 *.log
 
-# Data folder
-data/
+# Database files
+*.db
