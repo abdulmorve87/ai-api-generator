@@ -10,8 +10,7 @@ import streamlit as st
 def render_input_format_guide():
     """Render a comprehensive input format guide in the sidebar"""
     
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📖 Input Format Guide")
+    # No header or separator - already handled in app.py
     
     with st.sidebar.expander("🔗 URL Formats"):
         st.markdown("""

@@ -184,57 +184,71 @@ api_server, endpoint_manager, api_server_error = initialize_api_server()
 # Render header
 render_header()
 
-# Render input format guide in sidebar
-render_input_format_guide()
-
-# Show API Server status in sidebar
+# ============================================================================
+# SIDEBAR - Reorganized order: 1) Server Status, 2) Endpoints, 3) Instructions
+# ============================================================================
 with st.sidebar:
-    st.subheader("🔌 API Server")
-    
-    # Debug info
-    print(f"[Sidebar] Checking API server status...")
-    print(f"[Sidebar] api_server_error={api_server_error}")
-    print(f"[Sidebar] api_server={api_server}")
-    print(f"[Sidebar] endpoint_manager={endpoint_manager}")
+    # 1. API SERVER STATUS (First - most important)
+    st.markdown("### 🔌 API Server Status")
     
     if api_server_error:
-        st.error(f"❌ Server Error: {api_server_error}")
-        print(f"[Sidebar] Displaying error: {api_server_error}")
+        st.error(f"❌ Server Error")
+        with st.expander("Error Details"):
+            st.code(str(api_server_error))
     elif api_server is None:
-        st.warning("⚠️ API Server not initialized")
-        print(f"[Sidebar] API Server is None")
+        st.warning("⚠️ Not Initialized")
     elif api_server.is_running():
         server_url = api_server.get_base_url()
-        st.success(f"✅ Running at {server_url}")
-        print(f"[Sidebar] Server running at {server_url}")
-        
-        # Show existing endpoints
-        if endpoint_manager:
-            try:
-                endpoints = endpoint_manager.list_endpoints()
-                print(f"[Sidebar] Found {len(endpoints)} endpoints")
-                if endpoints:
-                    st.markdown("---")
-                    st.subheader("📋 Your Endpoints")
-                    for ep in endpoints:
-                        # Show description as the main title
-                        display_title = ep.description if ep.description else ep.endpoint_id
-                        with st.expander(f"🔗 {display_title}"):
-                            # Make URL clickable
-                            st.markdown(f"**URL:** [{ep.access_url}]({ep.access_url})")
-                            st.write(f"**ID:** `{ep.endpoint_id}`")
-                            st.write(f"**Records:** {ep.records_count}")
-                            st.write(f"**Created:** {ep.created_at.strftime('%Y-%m-%d %H:%M')}")
-                            if st.button("🗑️ Delete", key=f"del_{ep.endpoint_id}"):
-                                if endpoint_manager.delete_endpoint(ep.endpoint_id):
-                                    st.success("Deleted!")
-                                    st.rerun()
-            except Exception as e:
-                print(f"[Sidebar] Error listing endpoints: {e}")
-                st.error(f"Error listing endpoints: {e}")
+        st.success(f"✅ Live")
+        st.caption(f"Running at: `{server_url}`")
     else:
-        st.warning("⚠️ Server not running")
-        print(f"[Sidebar] Server not running")
+        st.warning("⚠️ Not Running")
+    
+    st.markdown("---")
+    
+    # 2. API ENDPOINTS (Second - user's created endpoints)
+    st.markdown("### 📋 API Endpoints")
+    
+    if endpoint_manager and api_server and api_server.is_running():
+        try:
+            endpoints = endpoint_manager.list_endpoints()
+            
+            if endpoints:
+                st.caption(f"{len(endpoints)} endpoint(s) available")
+                
+                for ep in endpoints:
+                    display_title = ep.description[:40] + "..." if len(ep.description) > 40 else ep.description
+                    
+                    with st.expander(f"🔗 {display_title}", expanded=False):
+                        st.markdown(f"**URL:**")
+                        st.code(ep.access_url, language="text")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Records", ep.records_count)
+                        with col2:
+                            st.caption(f"Created: {ep.created_at.strftime('%m/%d %H:%M')}")
+                        
+                        if st.button("🗑️ Delete", key=f"del_{ep.endpoint_id}", use_container_width=True):
+                            if endpoint_manager.delete_endpoint(ep.endpoint_id):
+                                st.success("Deleted!")
+                                st.rerun()
+            else:
+                st.info("No endpoints yet. Create one below!")
+        except Exception as e:
+            st.error(f"Error loading endpoints")
+            with st.expander("Error Details"):
+                st.code(str(e))
+    else:
+        st.info("Server must be running to view endpoints")
+    
+    st.markdown("---")
+    
+    # 3. INSTRUCTIONS (Third - help documentation)
+    st.markdown("### 📖 Instructions")
+
+# Render input format guide (now under Instructions section)
+render_input_format_guide()
 
 # Render main form and get submission status
 form_data = render_api_form()
@@ -452,67 +466,75 @@ if form_data['submitted']:
                             # NEW: Parse scraped data into structured JSON
                             if data_parser:
                                 st.markdown("---")
-                                with st.spinner("🤖 AI is parsing scraped data into structured JSON..."):
-                                    try:
-                                        print("\n" + "="*80)
-                                        print("PARSING SCRAPED DATA...")
-                                        print("="*80)
-                                        print(f"Records to parse: {len(execution_result.data)}")
-                                        print(f"User requirements: {standardized_input.desired_fields}")
-                                        print("="*80)
-                                        
-                                        # Convert standardized input to parser format
-                                        parser_requirements = {
-                                            'data_description': standardized_input.data_description,
-                                            'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
-                                            'desired_fields': '\n'.join(standardized_input.desired_fields),  # Convert list to newline-separated
-                                            'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
-                                            'update_frequency': standardized_input.update_frequency
-                                        }
-                                        
-                                        # Parse the scraped data
-                                        parsed_response = data_parser.parse_scraped_data(
-                                            scraping_result=execution_result,
-                                            user_requirements=parser_requirements
-                                        )
-                                        
-                                        print("\n" + "="*80)
-                                        print("DATA PARSED SUCCESSFULLY")
-                                        print("="*80)
-                                        print(f"Records parsed: {parsed_response.metadata.records_parsed}")
-                                        print(f"Fields extracted: {', '.join(parsed_response.metadata.fields_extracted)}")
-                                        print(f"Parsing time: {parsed_response.metadata.parsing_time_ms}ms")
-                                        print("="*80)
-                                        print("PARSED JSON OUTPUT:")
-                                        print("="*80)
-                                        import json
-                                        print(json.dumps(parsed_response.data, indent=2, default=str))
-                                        print("="*80 + "\n")
-                                        
-                                        # Render the parsed response in UI
+                                
+                                # Use a container to ensure spinner closes properly
+                                parsing_container = st.container()
+                                
+                                with parsing_container:
+                                    with st.spinner("🤖 AI is parsing scraped data into structured JSON..."):
+                                        try:
+                                            print("\n" + "="*80)
+                                            print("PARSING SCRAPED DATA...")
+                                            print("="*80)
+                                            print(f"Records to parse: {len(execution_result.data)}")
+                                            print(f"User requirements: {standardized_input.desired_fields}")
+                                            print("="*80)
+                                            
+                                            # Convert standardized input to parser format
+                                            parser_requirements = {
+                                                'data_description': standardized_input.data_description,
+                                                'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
+                                                'desired_fields': '\n'.join(standardized_input.desired_fields),  # Convert list to newline-separated
+                                                'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
+                                                'update_frequency': standardized_input.update_frequency
+                                            }
+                                            
+                                            # Parse the scraped data
+                                            parsed_response = data_parser.parse_scraped_data(
+                                                scraping_result=execution_result,
+                                                user_requirements=parser_requirements
+                                            )
+                                            
+                                            print("\n" + "="*80)
+                                            print("DATA PARSED SUCCESSFULLY")
+                                            print("="*80)
+                                            print(f"Records parsed: {parsed_response.metadata.records_parsed}")
+                                            print(f"Fields extracted: {', '.join(parsed_response.metadata.fields_extracted)}")
+                                            print(f"Parsing time: {parsed_response.metadata.parsing_time_ms}ms")
+                                            print("="*80)
+                                            print("PARSED JSON OUTPUT:")
+                                            print("="*80)
+                                            import json
+                                            print(json.dumps(parsed_response.data, indent=2, default=str))
+                                            print("="*80 + "\n")
+                                            
+                                        except (EmptyDataError, ParsingError) as e:
+                                            print("\n" + "="*80)
+                                            print("DATA PARSING FAILED")
+                                            print("="*80)
+                                            print(f"Error: {str(e)}")
+                                            print("="*80 + "\n")
+                                            render_error(e)
+                                            parsed_response = None
+                                        except Exception as e:
+                                            print("\n" + "="*80)
+                                            print("DATA PARSING FAILED")
+                                            print("="*80)
+                                            print(f"Error: {str(e)}")
+                                            import traceback
+                                            print(traceback.format_exc())
+                                            print("="*80 + "\n")
+                                            st.error(f"❌ Data parsing failed: {str(e)}")
+                                            parsed_response = None
+                                    
+                                    # Render results OUTSIDE the spinner context
+                                    if parsed_response:
                                         render_parsed_response(parsed_response)
                                         
                                         # Store parsed_response in session state for API endpoint creation
                                         st.session_state['last_parsed_response'] = parsed_response
                                         st.session_state['last_form_data'] = form_data
                                         st.session_state['show_create_endpoint'] = True
-                                        
-                                    except (EmptyDataError, ParsingError) as e:
-                                        print("\n" + "="*80)
-                                        print("DATA PARSING FAILED")
-                                        print("="*80)
-                                        print(f"Error: {str(e)}")
-                                        print("="*80 + "\n")
-                                        render_error(e)
-                                    except Exception as e:
-                                        print("\n" + "="*80)
-                                        print("DATA PARSING FAILED")
-                                        print("="*80)
-                                        print(f"Error: {str(e)}")
-                                        import traceback
-                                        print(traceback.format_exc())
-                                        print("="*80 + "\n")
-                                        st.error(f"❌ Data parsing failed: {str(e)}")
                         else:
                             st.error(f"❌ Scraping failed for all URLs")
                             
@@ -560,42 +582,43 @@ if st.session_state.get('show_create_endpoint') and st.session_state.get('last_p
             create_clicked = st.button("🔗 Create Endpoint", type="primary", key="create_endpoint_btn")
         
         if create_clicked:
-            print("\n" + "="*80)
-            print("[CreateEndpoint] BUTTON CLICKED - Creating API endpoint...")
-            print("="*80)
-            
-            try:
-                parsed_response = st.session_state['last_parsed_response']
-                print(f"[CreateEndpoint] Got parsed_response from session state")
-                print(f"[CreateEndpoint] Data keys: {list(parsed_response.data.keys()) if parsed_response.data else 'None'}")
+            with st.spinner("Creating endpoint..."):
+                print("\n" + "="*80)
+                print("[CreateEndpoint] BUTTON CLICKED - Creating API endpoint...")
+                print("="*80)
                 
-                endpoint_info = endpoint_manager.create_endpoint(
-                    parsed_response=parsed_response,
-                    description=endpoint_desc
-                )
-                
-                st.success(f"✅ API Endpoint Created Successfully!")
-                st.code(endpoint_info.access_url, language="text")
-                st.info(f"📊 {endpoint_info.records_count} records available at this endpoint")
-                st.balloons()
-                
-                print(f"[CreateEndpoint] ✅ SUCCESS!")
-                print(f"[CreateEndpoint] Endpoint ID: {endpoint_info.endpoint_id}")
-                print(f"[CreateEndpoint] Access URL: {endpoint_info.access_url}")
-                print(f"[CreateEndpoint] Records: {endpoint_info.records_count}")
-                print("="*80 + "\n")
-                
-                # Clear the flag so it doesn't show again after rerun
-                # st.session_state['show_create_endpoint'] = False
-                
-            except EndpointCreationError as e:
-                print(f"[CreateEndpoint] EndpointCreationError: {e}")
-                st.error(f"❌ Failed to create endpoint: {str(e)}")
-            except Exception as e:
-                import traceback
-                print(f"[CreateEndpoint] Unexpected error: {e}")
-                print(traceback.format_exc())
-                st.error(f"❌ Error: {str(e)}")
+                try:
+                    parsed_response = st.session_state['last_parsed_response']
+                    print(f"[CreateEndpoint] Got parsed_response from session state")
+                    print(f"[CreateEndpoint] Data keys: {list(parsed_response.data.keys()) if parsed_response.data else 'None'}")
+                    
+                    endpoint_info = endpoint_manager.create_endpoint(
+                        parsed_response=parsed_response,
+                        description=endpoint_desc
+                    )
+                    
+                    st.success(f"✅ API Endpoint Created Successfully!")
+                    st.code(endpoint_info.access_url, language="text")
+                    st.info(f"📊 {endpoint_info.records_count} records available at this endpoint")
+                    
+                    print(f"[CreateEndpoint] ✅ SUCCESS!")
+                    print(f"[CreateEndpoint] Endpoint ID: {endpoint_info.endpoint_id}")
+                    print(f"[CreateEndpoint] Access URL: {endpoint_info.access_url}")
+                    print(f"[CreateEndpoint] Records: {endpoint_info.records_count}")
+                    print("="*80 + "\n")
+                    
+                    # Clear the create endpoint flag and trigger rerun to refresh sidebar
+                    st.session_state['show_create_endpoint'] = False
+                    st.rerun()
+                    
+                except EndpointCreationError as e:
+                    print(f"[CreateEndpoint] EndpointCreationError: {e}")
+                    st.error(f"❌ Failed to create endpoint: {str(e)}")
+                except Exception as e:
+                    import traceback
+                    print(f"[CreateEndpoint] Unexpected error: {e}")
+                    print(traceback.format_exc())
+                    st.error(f"❌ Error: {str(e)}")
     else:
         st.warning("⚠️ API Server not available. Cannot create endpoints.")
         print("[CreateEndpoint] endpoint_manager is None")
