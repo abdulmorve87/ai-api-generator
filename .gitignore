@@ -44,5 +44,17 @@ Thumbs.db
 # Logs
 *.log
 
-# Database files
-*.db
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Scraping Layer
+*.html
+*.json
+cache/
+temp/
+sandbox/
+
+# Data
+data/
