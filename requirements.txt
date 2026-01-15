@@ -21,6 +21,10 @@ playwright>=1.40.0
 # System monitoring
 psutil>=5.9.0
 
+# API Server Dependencies
+fastapi>=0.109.0
+uvicorn>=0.27.0
+
 # Caching backends (optional)
 redis>=5.0.0
 
