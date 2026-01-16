@@ -459,77 +459,132 @@ if form_data['submitted']:
                             # Get successful sources for light scraping mode
                             successful_sources = [sr for sr in execution_result.source_results if sr.success]
                             
-                            # For light scraping: parse only top 1 source initially
-                            if form_data.get('use_light_scraping', False) and len(successful_sources) > 1:
-                                # Use only the first successful source
-                                top_source = successful_sources[0]
-                                top_source_url = top_source.source_url
-                                data_for_parsing = [
-                                    record for record in execution_result.data
-                                    if record.get('_source_url') == top_source_url
-                                ]
-                                console_logger.info(
-                                    f"Light scraping: Using top 1 source ({len(data_for_parsing)} records) "
-                                    f"from {len(execution_result.data)} total records"
-                                )
-                                st.info(f"💡 Light scraping: Parsing data from top source only ({top_source_url})")
-                                
-                                # Store info about available sources for re-parsing UI
-                                st.session_state['available_sources'] = successful_sources
-                                st.session_state['current_parsing_sources'] = [top_source_url]
-                            else:
-                                data_for_parsing = execution_result.data
-                                st.session_state['available_sources'] = successful_sources
-                                st.session_state['current_parsing_sources'] = [sr.source_url for sr in successful_sources]
+                            # Store info about available sources for re-parsing UI
+                            st.session_state['available_sources'] = successful_sources
                             
-                            # Parse with spinner
+                            # Convert standardized input to parser format (used in all parsing attempts)
+                            parser_requirements = {
+                                'data_description': standardized_input.data_description,
+                                'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
+                                'desired_fields': '\n'.join(standardized_input.desired_fields),
+                                'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
+                                'update_frequency': standardized_input.update_frequency
+                            }
+                            
                             parsed_response = None
-                            with st.spinner("🤖 AI is parsing scraped data into structured JSON..."):
-                                try:
-                                    # Log parsing start
-                                    console_logger.log_parsing_start(len(data_for_parsing))
+                            
+                            # For light scraping: try sources one by one until we get records
+                            if form_data.get('use_light_scraping', False) and len(successful_sources) > 1:
+                                from scraping_layer.dynamic_execution.models import ExecutionResult as ExecResult
+                                
+                                for source_idx, source in enumerate(successful_sources):
+                                    source_url = source.source_url
+                                    data_for_parsing = [
+                                        record for record in execution_result.data
+                                        if record.get('_source_url') == source_url
+                                    ]
                                     
-                                    # Convert standardized input to parser format
-                                    parser_requirements = {
-                                        'data_description': standardized_input.data_description,
-                                        'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
-                                        'desired_fields': '\n'.join(standardized_input.desired_fields),
-                                        'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
-                                        'update_frequency': standardized_input.update_frequency
-                                    }
+                                    if not data_for_parsing:
+                                        continue
                                     
-                                    # Create filtered result for parsing
-                                    from scraping_layer.dynamic_execution.models import ExecutionResult as ExecResult
-                                    selected_source_urls = set(st.session_state.get('current_parsing_sources', []))
-                                    filtered_source_results = [sr for sr in execution_result.source_results 
-                                                              if sr.success and sr.source_url in selected_source_urls]
-                                    
-                                    parsing_result = ExecResult(
-                                        success=execution_result.success,
-                                        data=data_for_parsing,
-                                        metadata=execution_result.metadata,
-                                        errors=execution_result.errors,
-                                        source_results=filtered_source_results,
-                                        execution_time_ms=execution_result.execution_time_ms,
-                                        scraped_at=execution_result.scraped_at
+                                    console_logger.info(
+                                        f"Light scraping: Trying source {source_idx + 1}/{len(successful_sources)} "
+                                        f"({len(data_for_parsing)} records)"
                                     )
                                     
-                                    parsed_response = data_parser.parse_scraped_data(
-                                        scraping_result=parsing_result,
-                                        user_requirements=parser_requirements
-                                    )
+                                    if source_idx == 0:
+                                        st.info(f"💡 Light scraping: Parsing data from top source ({source_url})")
+                                    else:
+                                        st.info(f"💡 Previous source returned 0 records. Trying source {source_idx + 1}: {source_url}")
                                     
-                                    # Log parsing completion
-                                    console_logger.log_parsing_complete(parsed_response.metadata)
-                                    
-                                except (EmptyDataError, ParsingError) as e:
-                                    console_logger.log_workflow_error("Data Parsing", e)
-                                    render_error(e)
-                                    parsed_response = None
-                                except Exception as e:
-                                    console_logger.log_workflow_error("Data Parsing", e)
-                                    st.error(f"❌ Data parsing failed: {str(e)}")
-                                    parsed_response = None
+                                    # Parse with spinner
+                                    with st.spinner(f"🤖 AI is parsing data from source {source_idx + 1}..."):
+                                        try:
+                                            console_logger.log_parsing_start(len(data_for_parsing))
+                                            
+                                            # Create filtered result for this source
+                                            filtered_source_results = [sr for sr in execution_result.source_results 
+                                                                      if sr.success and sr.source_url == source_url]
+                                            
+                                            parsing_result = ExecResult(
+                                                success=execution_result.success,
+                                                data=data_for_parsing,
+                                                metadata=execution_result.metadata,
+                                                errors=execution_result.errors,
+                                                source_results=filtered_source_results,
+                                                execution_time_ms=execution_result.execution_time_ms,
+                                                scraped_at=execution_result.scraped_at
+                                            )
+                                            
+                                            parsed_response = data_parser.parse_scraped_data(
+                                                scraping_result=parsing_result,
+                                                user_requirements=parser_requirements
+                                            )
+                                            
+                                            console_logger.log_parsing_complete(parsed_response.metadata)
+                                            
+                                            # Check if we got any records
+                                            records_count = parsed_response.metadata.records_parsed
+                                            if records_count > 0:
+                                                # Success! Store current source and break
+                                                st.session_state['current_parsing_sources'] = [source_url]
+                                                st.success(f"✅ Successfully parsed {records_count} records from source {source_idx + 1}")
+                                                break
+                                            else:
+                                                # No records, try next source
+                                                console_logger.warning(f"Source {source_idx + 1} returned 0 records, trying next source...")
+                                                if source_idx < len(successful_sources) - 1:
+                                                    st.warning(f"⚠️ Source {source_idx + 1} returned 0 records. Trying next source...")
+                                                    parsed_response = None  # Reset for next attempt
+                                                else:
+                                                    st.warning(f"⚠️ All sources returned 0 records. You can try re-parsing with multiple sources.")
+                                            
+                                        except (EmptyDataError, ParsingError) as e:
+                                            console_logger.log_workflow_error(f"Data Parsing (Source {source_idx + 1})", e)
+                                            if source_idx < len(successful_sources) - 1:
+                                                st.warning(f"⚠️ Source {source_idx + 1} failed. Trying next source...")
+                                                parsed_response = None
+                                            else:
+                                                render_error(e)
+                                        except Exception as e:
+                                            console_logger.log_workflow_error(f"Data Parsing (Source {source_idx + 1})", e)
+                                            if source_idx < len(successful_sources) - 1:
+                                                st.warning(f"⚠️ Source {source_idx + 1} error: {str(e)}. Trying next source...")
+                                                parsed_response = None
+                                            else:
+                                                st.error(f"❌ Data parsing failed: {str(e)}")
+                                
+                                # If we still don't have a response, set current sources to first one for re-parsing UI
+                                if not parsed_response:
+                                    st.session_state['current_parsing_sources'] = [successful_sources[0].source_url]
+                            
+                            else:
+                                # Traditional scraping or single source - parse all data
+                                data_for_parsing = execution_result.data
+                                st.session_state['current_parsing_sources'] = [sr.source_url for sr in successful_sources]
+                                
+                                with st.spinner("🤖 AI is parsing scraped data into structured JSON..."):
+                                    try:
+                                        console_logger.log_parsing_start(len(data_for_parsing))
+                                        
+                                        from scraping_layer.dynamic_execution.models import ExecutionResult as ExecResult
+                                        parsing_result = execution_result
+                                        
+                                        parsed_response = data_parser.parse_scraped_data(
+                                            scraping_result=parsing_result,
+                                            user_requirements=parser_requirements
+                                        )
+                                        
+                                        console_logger.log_parsing_complete(parsed_response.metadata)
+                                        
+                                    except (EmptyDataError, ParsingError) as e:
+                                        console_logger.log_workflow_error("Data Parsing", e)
+                                        render_error(e)
+                                        parsed_response = None
+                                    except Exception as e:
+                                        console_logger.log_workflow_error("Data Parsing", e)
+                                        st.error(f"❌ Data parsing failed: {str(e)}")
+                                        parsed_response = None
                             
                             # Render results OUTSIDE the spinner context
                             if parsed_response:
@@ -593,7 +648,7 @@ if (st.session_state.get('show_reparse_option') and
             with col1:
                 is_current = sr.source_url in current_sources
                 checked = st.checkbox(
-                    "", 
+                    f"Select {domain}", 
                     value=is_current,
                     key=f"source_cb_{idx}",
                     label_visibility="collapsed"
