@@ -17,13 +17,13 @@ from ai_layer.script_models import ScriptValidationResult, ScriptValidationError
 
 
 class ScriptValidator:
-    """Validates generated HTML extraction scripts for safety and correctness."""
+    """Validates generated smart content extraction scripts for safety and correctness."""
     
-    # Required imports for HTML extraction scripts (NO bs4, NO lxml)
+    # Required imports for smart extraction scripts (includes bs4 for content extraction)
     REQUIRED_IMPORTS = ['requests']
     
-    # Forbidden imports - we don't want any HTML parsing
-    FORBIDDEN_IMPORTS = ['bs4', 'BeautifulSoup', 'lxml']
+    # Optional but expected imports for smart extraction
+    EXPECTED_IMPORTS = ['bs4', 'BeautifulSoup']
     
     # Forbidden operations for security
     FORBIDDEN_OPERATIONS = [
@@ -80,12 +80,6 @@ class ScriptValidator:
         result.imports_valid = imports_valid
         if not imports_valid:
             result.add_error(f"Missing required imports: {', '.join(missing_imports)}")
-        
-        # Check 2b: Forbidden imports (no HTML parsing libraries)
-        no_forbidden_imports, forbidden_imports_found = self.check_forbidden_imports(script_code)
-        if not no_forbidden_imports:
-            result.imports_valid = False
-            result.add_error(f"Forbidden imports detected (no HTML parsing allowed): {', '.join(forbidden_imports_found)}")
         
         # Check 3: Forbidden operations
         no_forbidden, forbidden_found = self.check_forbidden_operations(script_code)
@@ -162,34 +156,6 @@ class ScriptValidator:
                 self.logger.debug(f"Missing required import: {required_import}")
         
         return len(missing_imports) == 0, missing_imports
-    
-    def check_forbidden_imports(self, script_code: str) -> Tuple[bool, List[str]]:
-        """
-        Check if forbidden imports (HTML parsing libraries) are present.
-        
-        Args:
-            script_code: Python script code to check
-            
-        Returns:
-            Tuple of (no_forbidden_imports, forbidden_imports_found)
-        """
-        forbidden_found = []
-        
-        for forbidden_import in self.FORBIDDEN_IMPORTS:
-            # Check for various import patterns
-            patterns = [
-                f"import {forbidden_import}",
-                f"from {forbidden_import} import",
-                f"from {forbidden_import}.",
-            ]
-            
-            found = any(pattern in script_code for pattern in patterns)
-            
-            if found:
-                forbidden_found.append(forbidden_import)
-                self.logger.warning(f"Forbidden import detected: {forbidden_import}")
-        
-        return len(forbidden_found) == 0, forbidden_found
     
     def check_forbidden_operations(self, script_code: str) -> Tuple[bool, List[str]]:
         """

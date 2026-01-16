@@ -146,6 +146,9 @@ class DataExtractor:
         """
         Convert list data to readable text format.
         
+        Handles both traditional scraped data and smart-extracted content
+        with 'content', 'tables', 'lists', 'headings' fields.
+        
         Args:
             data: List of data items
             
@@ -156,11 +159,100 @@ class DataExtractor:
             return ""
         
         try:
-            # Format as JSON array for readability
+            # Check if this is smart-extracted content (light scraping)
+            if data and isinstance(data[0], dict):
+                first_item = data[0]
+                
+                # Check for smart extraction format (has 'content' key instead of 'html')
+                if 'content' in first_item and 'tables' in first_item:
+                    return DataExtractor._extract_smart_content(data)
+                
+                # Check for raw HTML format (old light scraping)
+                if 'html' in first_item:
+                    return DataExtractor._extract_html_content(data)
+            
+            # Default: format as JSON array for readability
             return json.dumps(data, indent=2, default=str, ensure_ascii=False)
         except Exception:
             # Fallback to string representation
             return str(data)
+    
+    @staticmethod
+    def _extract_smart_content(data: List[Dict[str, Any]]) -> str:
+        """
+        Extract text from smart-extracted content format.
+        
+        Args:
+            data: List of smart-extracted content items
+            
+        Returns:
+            Combined text content
+        """
+        all_content = []
+        
+        for item in data:
+            source_url = item.get('source_url', 'Unknown source')
+            all_content.append(f"\n{'='*60}")
+            all_content.append(f"SOURCE: {source_url}")
+            all_content.append('='*60)
+            
+            # Add headings for context
+            headings = item.get('headings', [])
+            if headings:
+                all_content.append("\n## HEADINGS:")
+                for h in headings[:10]:  # Limit to 10 headings
+                    all_content.append(f"  - {h}")
+            
+            # Add tables (important for structured data)
+            tables = item.get('tables', [])
+            if tables:
+                all_content.append("\n## TABLES:")
+                for i, table in enumerate(tables[:5], 1):  # Limit to 5 tables
+                    all_content.append(f"\n[Table {i}]")
+                    all_content.append(table[:5000])  # Limit table size
+            
+            # Add lists
+            lists = item.get('lists', [])
+            if lists:
+                all_content.append("\n## LISTS:")
+                for lst in lists[:10]:  # Limit to 10 lists
+                    all_content.append(lst[:2000])  # Limit list size
+            
+            # Add main content
+            content = item.get('content', '')
+            if content:
+                all_content.append("\n## MAIN CONTENT:")
+                all_content.append(content[:30000])  # Limit content size
+        
+        return '\n'.join(all_content)
+    
+    @staticmethod
+    def _extract_html_content(data: List[Dict[str, Any]]) -> str:
+        """
+        Extract text from raw HTML content format (legacy).
+        
+        Args:
+            data: List of items with 'html' field
+            
+        Returns:
+            Extracted text content
+        """
+        all_content = []
+        
+        for item in data:
+            source_url = item.get('source_url', 'Unknown source')
+            html = item.get('html', '')
+            
+            if html:
+                all_content.append(f"\n{'='*60}")
+                all_content.append(f"SOURCE: {source_url}")
+                all_content.append('='*60)
+                
+                # Extract text from HTML
+                text = DataExtractor.extract_from_html(html)
+                all_content.append(text)
+        
+        return '\n'.join(all_content)
     
     @staticmethod
     def truncate_if_needed(text: str, max_length: int = None) -> str:

@@ -1,9 +1,10 @@
 """
-HTML Extractor Prompt Builder - Constructs prompts for generating raw HTML extraction scripts.
+HTML Extractor Prompt Builder - Constructs prompts for generating smart HTML extraction scripts.
 
 This module handles building prompts that instruct the AI to generate
-simple HTML extractor scripts that fetch raw HTML without any parsing or data extraction.
-The extracted HTML is then passed to AI models for intelligent data extraction.
+scripts that fetch HTML and extract only the useful text content,
+stripping out scripts, styles, navigation, and other noise.
+The extracted content is then passed to AI models for intelligent data extraction.
 """
 
 from typing import Dict, Any, List
@@ -12,13 +13,35 @@ from scraping_layer.config import ScrapingConfig
 
 
 class HTMLExtractorPromptBuilder:
-    """Builds prompts for generating raw HTML extraction scripts."""
+    """Builds prompts for generating smart HTML content extraction scripts."""
     
-    SYSTEM_PROMPT = """You are an expert Python web scraping engineer. Your task is to generate a simple, production-ready HTML extraction script.
+    SYSTEM_PROMPT = """You are an expert Python web scraping engineer. Your task is to generate a smart, production-ready content extraction script.
 
 ## PURPOSE
-This script fetches the RAW HTML content from URLs without any parsing or data extraction.
-The raw HTML will be passed to AI models for intelligent data extraction later in the pipeline.
+This script fetches HTML from URLs and extracts ONLY the useful text content, removing all noise.
+The extracted content will be passed to AI models for intelligent data extraction later.
+
+## CRITICAL: CONTENT SIZE REDUCTION
+
+**THE MAIN GOAL**: Extract useful text content while reducing HTML size.
+
+### WHAT TO REMOVE (NOISE):
+- All `<script>` tags and their content
+- All `<style>` tags and their content  
+- All `<noscript>` tags
+- All `<iframe>` tags
+- All `<svg>` elements
+
+### WHAT TO KEEP (USEFUL CONTENT):
+- ALL text content from the page
+- Tables (`<table>`) - often contain structured data
+- Lists (`<ul>`, `<ol>`) - often contain data items
+- Headings (`<h1>` to `<h5>`) - provide context
+- Paragraphs and divs with text
+- Navigation text (might contain useful links/data)
+- Footer text (might contain useful info)
+
+**BE INCLUSIVE**: Keep more content rather than less. The AI parser can handle extra text.
 
 ## CRITICAL REQUIREMENT: DEFAULT URLs
 
@@ -26,39 +49,31 @@ The raw HTML will be passed to AI models for intelligent data extraction later i
 
 ### URL SOURCING RULES (FOLLOW IN ORDER):
 
-1. **USER-PROVIDED URLs ARE MANDATORY**: If the user provides data source URLs, they MUST ALL be included in DEFAULT_URLS first, regardless of how many.
+1. **USER-PROVIDED URLs ARE MANDATORY**: If the user provides data source URLs, they MUST ALL be included in DEFAULT_URLS first.
 
-2. **AI-SUGGESTED URLs**: Based on the user's data description, desired fields, and other inputs, YOU MUST find and add additional relevant URLs to reach 3-5 total URLs.
+2. **AI-SUGGESTED URLs**: Based on the user's data description, add additional relevant URLs to reach 3-5 total.
 
-3. **URL QUALITY REQUIREMENTS** (for AI-suggested URLs only):
-   - Do NOT require authentication or login
-   - Do NOT have aggressive anti-scraping measures (avoid Amazon, Goodreads)
-   - Are publicly accessible without API keys
+3. **URL QUALITY REQUIREMENTS**:
+   - Publicly accessible without login
+   - No aggressive anti-scraping (avoid Amazon, Goodreads)
    - Actually contain the requested data type
-
-### BAD URLs TO AVOID (for AI suggestions):
-- https://www.goodreads.com/* (requires login for full data)
-- https://www.amazon.com/* (aggressive anti-bot)
-- Any URL with /login, /signin, /account
 
 ## TECHNICAL SPECIFICATIONS
 
 The script uses:
 - **requests** library for HTTP requests
-- **NO HTML parsing** - just return raw HTML text (response.text)
-- **NO BeautifulSoup** - do not import or use bs4
-- **NO data extraction** - do not parse or structure the HTML
-- **Proper HTTP headers** to avoid 403 Forbidden errors
+- **BeautifulSoup** for HTML parsing and content extraction
+- **re** for text cleaning
+- Smart content extraction to reduce size
 
 ## CRITICAL: HTTP HEADERS FOR AVOIDING 403 ERRORS
 
-**IMPORTANT**: Many sites (ESPN, Cricbuzz, Wikipedia, ICC, etc.) block requests without proper browser-like headers.
-ALWAYS use these COMPLETE headers to avoid 403 Forbidden errors:
+ALWAYS use these COMPLETE headers:
 
 ```python
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
     'Accept-Encoding': 'gzip, deflate, br',
     'Connection': 'keep-alive',
@@ -74,8 +89,6 @@ headers = {
 }
 ```
 
-**WHY THESE HEADERS**: Modern websites check for Sec-Fetch-* and sec-ch-ua-* headers to detect bots. Without them, you get 403 errors.
-
 ## FUNCTION SIGNATURE (MUST BE EXACTLY THIS)
 ```python
 def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
@@ -86,18 +99,23 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
 {
     'data': [
         {
-            'html': str,  # The complete raw HTML content from the page
+            'content': str,  # The extracted text content (NOT raw HTML)
             'source_url': str,  # The URL that was scraped
+            'tables': List[str],  # Any tables found, as text
+            'lists': List[str],  # Any lists found, as text
+            'headings': List[str],  # Headings for context
         }
     ],
     'metadata': {
         'source_url': str,
-        'total_count': 1,  # Always 1 since we return one HTML document
+        'total_count': 1,
         'scraped_at': 'ISO timestamp',
-        'scraping_method': 'raw_html',
-        'content_length': int,  # Length of HTML content
-        'status_code': int,  # HTTP status code
-        'content_type': str,  # Response content type
+        'scraping_method': 'smart_extract',
+        'original_size': int,  # Original HTML size in bytes
+        'extracted_size': int,  # Extracted content size in bytes
+        'reduction_percent': float,  # Size reduction percentage
+        'status_code': int,
+        'content_type': str,
         'update_frequency': str,
         'error': str or None
     }
@@ -108,8 +126,10 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
 
 ```python
 import requests
+from bs4 import BeautifulSoup
 from typing import Dict, Any, List
 import datetime
+import re
 
 # ============================================================
 # DEFAULT URLs - MUST BE POPULATED WITH 3-5 URLs
@@ -121,16 +141,87 @@ DEFAULT_URLS = [
 ]
 
 # ============================================================
+# NOISE REMOVAL - MINIMAL LIST (keep more content)
+# ============================================================
+
+NOISE_TAGS = ['script', 'style', 'noscript', 'iframe', 'svg']
+
+# ============================================================
+# CONTENT EXTRACTION FUNCTIONS
+# ============================================================
+
+def clean_text(text: str) -> str:
+    \"\"\"Clean and normalize text content.\"\"\"
+    if not text:
+        return ""
+    text = re.sub(r'\\s+', ' ', text)
+    lines = [line.strip() for line in text.split('\\n') if line.strip()]
+    return '\\n'.join(lines)
+
+def extract_tables(soup) -> List[str]:
+    \"\"\"Extract table content as readable text.\"\"\"
+    tables = []
+    for table in soup.find_all('table'):
+        rows = []
+        for row in table.find_all('tr'):
+            cells = [cell.get_text(strip=True) for cell in row.find_all(['td', 'th'])]
+            if any(cells):
+                rows.append(' | '.join(cells))
+        if rows:
+            tables.append('\\n'.join(rows))
+    return tables
+
+def extract_lists(soup) -> List[str]:
+    \"\"\"Extract list content as readable text.\"\"\"
+    lists = []
+    for lst in soup.find_all(['ul', 'ol']):
+        items = [li.get_text(strip=True) for li in lst.find_all('li', recursive=False)]
+        items = [item for item in items if item and len(item) > 2]
+        if items:
+            lists.append('\\n- '.join([''] + items))
+    return lists
+
+def extract_headings(soup) -> List[str]:
+    \"\"\"Extract headings for context.\"\"\"
+    headings = []
+    for h in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5']):
+        text = h.get_text(strip=True)
+        if text and len(text) > 2:
+            headings.append(text)
+    return headings[:30]
+
+def extract_main_content(soup) -> str:
+    \"\"\"Extract main text content from the page.\"\"\"
+    # Remove only essential noise tags
+    for tag in NOISE_TAGS:
+        for element in soup.find_all(tag):
+            element.decompose()
+    
+    # Try to find main content area first
+    main_content = None
+    for selector in ['main', 'article', '[role="main"]', '#content', '.content']:
+        main_content = soup.select_one(selector)
+        if main_content:
+            break
+    
+    if main_content:
+        text = main_content.get_text(separator='\\n', strip=True)
+    else:
+        body = soup.find('body')
+        text = body.get_text(separator='\\n', strip=True) if body else soup.get_text(separator='\\n', strip=True)
+    
+    return clean_text(text)
+
+# ============================================================
 # MAIN SCRAPING FUNCTION - MUST BE NAMED scrape_data
 # ============================================================
 
 def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
     \"\"\"
-    Fetch raw HTML content from a URL.
-    NO parsing, NO data extraction - just fetch the complete HTML.
+    Fetch HTML and extract useful text content.
     
     Args:
-        url: The URL to fetch HTML from
+        url: The URL to fetch content from
         timeout: Request timeout in seconds
         
     Returns:
@@ -140,18 +231,19 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
         'source_url': url,
         'total_count': 0,
         'scraped_at': datetime.datetime.utcnow().isoformat(),
-        'scraping_method': 'raw_html',
-        'content_length': 0,
+        'scraping_method': 'smart_extract',
+        'original_size': 0,
+        'extracted_size': 0,
+        'reduction_percent': 0.0,
         'status_code': None,
         'content_type': None,
         'update_frequency': '[FREQUENCY]',
         'error': None
     }
     
-    # Full headers to avoid 403 Forbidden errors
     headers = {
         'User-Agent': '[USER_AGENT]',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
@@ -170,21 +262,36 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
         response = requests.get(url, headers=headers, timeout=timeout)
         response.raise_for_status()
         
-        # Get the raw HTML
         html_content = response.text
-        
-        # Update metadata
+        original_size = len(html_content)
+        metadata['original_size'] = original_size
         metadata['status_code'] = response.status_code
         metadata['content_type'] = response.headers.get('Content-Type', 'unknown')
-        metadata['content_length'] = len(html_content)
+        
+        # Parse HTML
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Extract structured content
+        tables = extract_tables(soup)
+        lists = extract_lists(soup)
+        headings = extract_headings(soup)
+        main_content = extract_main_content(soup)
+        
+        # Calculate sizes
+        extracted_size = len(main_content) + sum(len(t) for t in tables) + sum(len(l) for l in lists)
+        
+        metadata['extracted_size'] = extracted_size
+        metadata['reduction_percent'] = round((1 - extracted_size / original_size) * 100, 1) if original_size > 0 else 0
         metadata['total_count'] = 1
         
-        # Return raw HTML in the expected format
         return {
             'data': [
                 {
-                    'html': html_content,
-                    'source_url': url
+                    'content': main_content,
+                    'source_url': url,
+                    'tables': tables,
+                    'lists': lists,
+                    'headings': headings
                 }
             ],
             'metadata': metadata
@@ -205,12 +312,17 @@ def scrape_data(url: str, timeout: int = 30) -> Dict[str, Any]:
         return {'data': [], 'metadata': metadata}
 ```
 
+## IMPORTANT NOTES
+
+1. **Keep it simple**: Don't over-engineer the extraction. Basic text extraction works well.
+2. **Handle errors gracefully**: Always return the expected format even on errors.
+3. **No class/id filtering**: Don't filter elements by class or id names - this causes errors.
+
 ## SAFETY REQUIREMENTS
 - NO exec, eval, os.system, subprocess, __import__
 - NO file system operations
-- Only use requests for HTTP calls
+- Only use requests and BeautifulSoup
 - Proper exception handling with error metadata
-- NO BeautifulSoup, lxml, or any HTML parsing libraries
 
 ## OUTPUT
 Return ONLY valid Python code. NO markdown, NO code blocks, NO explanations.
@@ -221,81 +333,62 @@ Start with 'import' statements."""
         self.scraping_config = scraping_config
     
     def build_script_prompt(self, form_input: Dict[str, Any]) -> List[Dict[str, str]]:
-        """Build prompt messages for HTML extraction script generation."""
+        """Build prompt messages for smart content extraction script generation."""
         fields = InputProcessor.extract_form_fields(form_input)
         
         user_prompt_parts = []
         
-        # DATA DESCRIPTION (for context on what URLs to suggest)
+        # DATA DESCRIPTION
         user_prompt_parts.append("=" * 60)
-        user_prompt_parts.append("DATA CONTEXT (for URL suggestions)")
+        user_prompt_parts.append("DATA CONTEXT")
         user_prompt_parts.append("=" * 60)
-        user_prompt_parts.append(f"\nWhat data will be extracted from the HTML: {fields['data_description']}")
+        user_prompt_parts.append(f"\nWhat data to extract: {fields['data_description']}")
         
         # DATA SOURCES
         user_prompt_parts.append("\n" + "=" * 60)
-        user_prompt_parts.append("DATA SOURCES - CRITICAL URL REQUIREMENTS")
+        user_prompt_parts.append("DATA SOURCES")
         user_prompt_parts.append("=" * 60)
         
         if fields['data_source']:
-            user_prompt_parts.append("\n** USER-PROVIDED SOURCES (MANDATORY - MUST ALL BE INCLUDED) **")
-            user_prompt_parts.append(f"User provided URLs/sources: {fields['data_source']}")
-            user_prompt_parts.append("\n!! CRITICAL INSTRUCTIONS !!")
-            user_prompt_parts.append("1. ALL user-provided URLs MUST be included in DEFAULT_URLS - no exceptions")
-            user_prompt_parts.append("2. These URLs will be fetched and their raw HTML returned")
-            user_prompt_parts.append("\n** AI-SUGGESTED ADDITIONAL SOURCES **")
-            user_prompt_parts.append("Based on the data description above, YOU MUST find and add")
-            user_prompt_parts.append("additional relevant public URLs to reach 3-5 total URLs in DEFAULT_URLS.")
+            user_prompt_parts.append(f"\n** USER-PROVIDED URLs (MANDATORY): **")
+            user_prompt_parts.append(f"{fields['data_source']}")
+            user_prompt_parts.append("\nAdd more URLs to reach 3-5 total in DEFAULT_URLS.")
         else:
-            user_prompt_parts.append("\n** NO USER URLs PROVIDED - AI MUST SUGGEST 3-5 URLs **")
-            user_prompt_parts.append("\nBased on the data description above,")
-            user_prompt_parts.append("YOU MUST find and provide 3-5 relevant public URLs in DEFAULT_URLS.")
+            user_prompt_parts.append("\n** NO USER URLs - Suggest 3-5 relevant public URLs **")
         
-        # FIELDS (for context only - not used in extraction)
+        # FIELDS
         if fields['desired_fields']:
             user_prompt_parts.append("\n" + "=" * 60)
-            user_prompt_parts.append("FIELDS CONTEXT (for URL selection)")
+            user_prompt_parts.append("FIELDS TO EXTRACT (for context)")
             user_prompt_parts.append("=" * 60)
             field_list = InputProcessor.parse_fields(fields['desired_fields'])
             if field_list:
-                user_prompt_parts.append("\n** Fields that will be extracted by AI from the HTML **")
                 for field in field_list:
                     user_prompt_parts.append(f"  - {field}")
-                user_prompt_parts.append("\nNote: This is for context only. Your script just fetches HTML.")
         
         # CONFIGURATION
         user_prompt_parts.append("\n" + "=" * 60)
-        user_prompt_parts.append("CONFIGURATION VALUES")
+        user_prompt_parts.append("CONFIGURATION")
         user_prompt_parts.append("=" * 60)
         user_prompt_parts.append(f"\nTimeout: {self.scraping_config.network.request_timeout} seconds")
         user_prompt_parts.append(f"User-Agent: {self.scraping_config.network.user_agent}")
         user_prompt_parts.append(f"Update Frequency: {fields['update_frequency']}")
-        user_prompt_parts.append("\nReplace [USER_AGENT] and [FREQUENCY] placeholders with these values!")
+        user_prompt_parts.append("\nReplace [USER_AGENT] and [FREQUENCY] placeholders!")
         
         # CRITICAL REMINDERS
         user_prompt_parts.append("\n" + "=" * 60)
-        user_prompt_parts.append("CRITICAL REMINDERS")
+        user_prompt_parts.append("CRITICAL REQUIREMENTS")
         user_prompt_parts.append("=" * 60)
-        user_prompt_parts.append("\n1. Function MUST be named 'scrape_data' (not extract_html)")
-        user_prompt_parts.append("2. DO NOT parse HTML - just return response.text in the data list")
-        user_prompt_parts.append("3. DO NOT extract data - AI will handle that later")
-        user_prompt_parts.append("4. DO NOT import BeautifulSoup or any parsing library")
-        user_prompt_parts.append("5. DO include proper headers to avoid 403 errors")
-        user_prompt_parts.append("6. DO handle all error cases with proper metadata")
-        user_prompt_parts.append("7. DEFAULT_URLS must have 3-5 URLs total")
-        user_prompt_parts.append("8. Return format: {'data': [{'html': ..., 'source_url': ...}], 'metadata': {...}}")
+        user_prompt_parts.append("\n1. Function MUST be named 'scrape_data'")
+        user_prompt_parts.append("2. Remove only: script, style, noscript, iframe, svg tags")
+        user_prompt_parts.append("3. Keep ALL text content - don't filter by class/id")
+        user_prompt_parts.append("4. Extract tables, lists, and headings separately")
+        user_prompt_parts.append("5. Return {'data': [...], 'metadata': {...}} format")
+        user_prompt_parts.append("6. Handle all errors gracefully")
         
-        # FINAL
         user_prompt_parts.append("\n" + "=" * 60)
         user_prompt_parts.append("GENERATE THE SCRIPT")
         user_prompt_parts.append("=" * 60)
-        user_prompt_parts.append("\nGenerate a simple HTML extraction script with:")
-        user_prompt_parts.append("1. DEFAULT_URLS list with 3-5 URLs total")
-        user_prompt_parts.append("2. scrape_data(url, timeout) function that returns raw HTML")
-        user_prompt_parts.append("3. Proper headers and timeout handling")
-        user_prompt_parts.append("4. Complete error handling with metadata")
-        user_prompt_parts.append("5. NO HTML parsing or data extraction")
-        user_prompt_parts.append("6. Return {'data': [...], 'metadata': {...}} format")
         user_prompt_parts.append("\nReturn ONLY Python code. NO markdown, NO explanations.")
         
         messages = [
