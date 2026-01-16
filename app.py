@@ -451,12 +451,30 @@ if form_data['submitted']:
                         if data_parser:
                             st.markdown("---")
                             
+                            # For light scraping mode, limit to top 2 data sources to reduce AI parsing load
+                            data_for_parsing = execution_result.data
+                            if form_data.get('use_light_scraping', False) and execution_result.source_results:
+                                # Get top 2 successful sources
+                                successful_sources = [sr for sr in execution_result.source_results if sr.success][:2]
+                                if len(successful_sources) < len([sr for sr in execution_result.source_results if sr.success]):
+                                    # Filter data to only include records from top 2 sources
+                                    top_source_urls = {sr.source_url for sr in successful_sources}
+                                    data_for_parsing = [
+                                        record for record in execution_result.data
+                                        if record.get('_source_url') in top_source_urls
+                                    ]
+                                    console_logger.info(
+                                        f"Light scraping: Limited to top 2 sources ({len(data_for_parsing)} records) "
+                                        f"from {len(execution_result.data)} total records"
+                                    )
+                                    st.info(f"💡 Light scraping mode: Using top 2 data sources ({len(data_for_parsing)} records) for AI parsing")
+                            
                             # Parse with spinner
                             parsed_response = None
                             with st.spinner("🤖 AI is parsing scraped data into structured JSON..."):
                                 try:
                                     # Log parsing start
-                                    console_logger.log_parsing_start(len(execution_result.data))
+                                    console_logger.log_parsing_start(len(data_for_parsing))
                                     
                                     # Convert standardized input to parser format
                                     parser_requirements = {
@@ -468,8 +486,26 @@ if form_data['submitted']:
                                     }
                                     
                                     # Parse the scraped data
+                                    # Create a modified result with filtered data for light scraping mode
+                                    if data_for_parsing is not execution_result.data:
+                                        # Create a copy of execution_result with filtered data
+                                        from scraping_layer.dynamic_execution.models import ExecutionResult as ExecResult
+                                        # Get only the successful sources that were used
+                                        filtered_source_results = [sr for sr in execution_result.source_results if sr.success][:2]
+                                        parsing_result = ExecResult(
+                                            success=execution_result.success,
+                                            data=data_for_parsing,
+                                            metadata=execution_result.metadata,
+                                            errors=execution_result.errors,
+                                            source_results=filtered_source_results,
+                                            execution_time_ms=execution_result.execution_time_ms,
+                                            scraped_at=execution_result.scraped_at
+                                        )
+                                    else:
+                                        parsing_result = execution_result
+                                    
                                     parsed_response = data_parser.parse_scraped_data(
-                                        scraping_result=execution_result,
+                                        scraping_result=parsing_result,
                                         user_requirements=parser_requirements
                                     )
                                     
