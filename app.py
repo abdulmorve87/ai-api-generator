@@ -451,23 +451,36 @@ if form_data['submitted']:
                         if data_parser:
                             st.markdown("---")
                             
-                            # For light scraping mode, limit to top 2 data sources to reduce AI parsing load
-                            data_for_parsing = execution_result.data
-                            if form_data.get('use_light_scraping', False) and execution_result.source_results:
-                                # Get top 2 successful sources
-                                successful_sources = [sr for sr in execution_result.source_results if sr.success][:2]
-                                if len(successful_sources) < len([sr for sr in execution_result.source_results if sr.success]):
-                                    # Filter data to only include records from top 2 sources
-                                    top_source_urls = {sr.source_url for sr in successful_sources}
-                                    data_for_parsing = [
-                                        record for record in execution_result.data
-                                        if record.get('_source_url') in top_source_urls
-                                    ]
-                                    console_logger.info(
-                                        f"Light scraping: Limited to top 2 sources ({len(data_for_parsing)} records) "
-                                        f"from {len(execution_result.data)} total records"
-                                    )
-                                    st.info(f"💡 Light scraping mode: Using top 2 data sources ({len(data_for_parsing)} records) for AI parsing")
+                            # Store execution result and form data for re-parsing
+                            st.session_state['execution_result'] = execution_result
+                            st.session_state['standardized_input'] = standardized_input
+                            st.session_state['is_light_scraping'] = form_data.get('use_light_scraping', False)
+                            
+                            # Get successful sources for light scraping mode
+                            successful_sources = [sr for sr in execution_result.source_results if sr.success]
+                            
+                            # For light scraping: parse only top 1 source initially
+                            if form_data.get('use_light_scraping', False) and len(successful_sources) > 1:
+                                # Use only the first successful source
+                                top_source = successful_sources[0]
+                                top_source_url = top_source.source_url
+                                data_for_parsing = [
+                                    record for record in execution_result.data
+                                    if record.get('_source_url') == top_source_url
+                                ]
+                                console_logger.info(
+                                    f"Light scraping: Using top 1 source ({len(data_for_parsing)} records) "
+                                    f"from {len(execution_result.data)} total records"
+                                )
+                                st.info(f"💡 Light scraping: Parsing data from top source only ({top_source_url})")
+                                
+                                # Store info about available sources for re-parsing UI
+                                st.session_state['available_sources'] = successful_sources
+                                st.session_state['current_parsing_sources'] = [top_source_url]
+                            else:
+                                data_for_parsing = execution_result.data
+                                st.session_state['available_sources'] = successful_sources
+                                st.session_state['current_parsing_sources'] = [sr.source_url for sr in successful_sources]
                             
                             # Parse with spinner
                             parsed_response = None
@@ -480,29 +493,26 @@ if form_data['submitted']:
                                     parser_requirements = {
                                         'data_description': standardized_input.data_description,
                                         'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
-                                        'desired_fields': '\n'.join(standardized_input.desired_fields),  # Convert list to newline-separated
+                                        'desired_fields': '\n'.join(standardized_input.desired_fields),
                                         'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
                                         'update_frequency': standardized_input.update_frequency
                                     }
                                     
-                                    # Parse the scraped data
-                                    # Create a modified result with filtered data for light scraping mode
-                                    if data_for_parsing is not execution_result.data:
-                                        # Create a copy of execution_result with filtered data
-                                        from scraping_layer.dynamic_execution.models import ExecutionResult as ExecResult
-                                        # Get only the successful sources that were used
-                                        filtered_source_results = [sr for sr in execution_result.source_results if sr.success][:2]
-                                        parsing_result = ExecResult(
-                                            success=execution_result.success,
-                                            data=data_for_parsing,
-                                            metadata=execution_result.metadata,
-                                            errors=execution_result.errors,
-                                            source_results=filtered_source_results,
-                                            execution_time_ms=execution_result.execution_time_ms,
-                                            scraped_at=execution_result.scraped_at
-                                        )
-                                    else:
-                                        parsing_result = execution_result
+                                    # Create filtered result for parsing
+                                    from scraping_layer.dynamic_execution.models import ExecutionResult as ExecResult
+                                    selected_source_urls = set(st.session_state.get('current_parsing_sources', []))
+                                    filtered_source_results = [sr for sr in execution_result.source_results 
+                                                              if sr.success and sr.source_url in selected_source_urls]
+                                    
+                                    parsing_result = ExecResult(
+                                        success=execution_result.success,
+                                        data=data_for_parsing,
+                                        metadata=execution_result.metadata,
+                                        errors=execution_result.errors,
+                                        source_results=filtered_source_results,
+                                        execution_time_ms=execution_result.execution_time_ms,
+                                        scraped_at=execution_result.scraped_at
+                                    )
                                     
                                     parsed_response = data_parser.parse_scraped_data(
                                         scraping_result=parsing_result,
@@ -529,6 +539,7 @@ if form_data['submitted']:
                                 st.session_state['last_parsed_response'] = parsed_response
                                 st.session_state['last_form_data'] = form_data
                                 st.session_state['show_create_endpoint'] = True
+                                st.session_state['show_reparse_option'] = True
                     elif execution_result:
                         console_logger.error("Scraping failed for all URLs")
                         st.error(f"❌ Scraping failed for all URLs")
@@ -542,6 +553,140 @@ if form_data['submitted']:
                 except Exception as e:
                         console_logger.log_workflow_error("Script Execution", e)
                         st.error(f"❌ Script execution failed: {str(e)}")
+
+# ============================================================================
+# RE-PARSING SECTION (For light scraping - allows user to select different sources)
+# ============================================================================
+if (st.session_state.get('show_reparse_option') and 
+    st.session_state.get('is_light_scraping') and 
+    st.session_state.get('available_sources') and 
+    len(st.session_state.get('available_sources', [])) > 1):
+    
+    available_sources = st.session_state['available_sources']
+    current_sources = st.session_state.get('current_parsing_sources', [])
+    
+    st.markdown("---")
+    
+    # More presentable UI with better styling
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); 
+                padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem;">
+        <h4 style="color: #fff; margin: 0 0 0.5rem 0;">� Try Different Data Sources</h4>
+        <p style="color: #b8d4e8; margin: 0; font-size: 0.9rem;">
+            Not satisfied? Select different source(s) below and re-parse.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Use a form to prevent page reset on checkbox changes
+    with st.form(key="reparse_form"):
+        st.markdown("**Select data source(s) to parse:**")
+        
+        # Create columns for better layout
+        selected_sources = []
+        for idx, sr in enumerate(available_sources):
+            # Extract domain name for cleaner display
+            from urllib.parse import urlparse
+            domain = urlparse(sr.source_url).netloc.replace('www.', '')
+            
+            col1, col2, col3 = st.columns([0.5, 3, 1])
+            with col1:
+                is_current = sr.source_url in current_sources
+                checked = st.checkbox(
+                    "", 
+                    value=is_current,
+                    key=f"source_cb_{idx}",
+                    label_visibility="collapsed"
+                )
+                if checked:
+                    selected_sources.append(sr.source_url)
+            with col2:
+                # Show domain name prominently, full URL in smaller text
+                st.markdown(f"**{domain}**")
+                st.caption(sr.source_url)
+            with col3:
+                st.markdown(f"<span style='background:#3d5a80; padding:2px 8px; border-radius:4px; font-size:0.8rem;'>{sr.record_count} records</span>", unsafe_allow_html=True)
+        
+        st.markdown("")  # Spacer
+        
+        # Submit button centered
+        col1, col2, col3 = st.columns([2, 1, 2])
+        with col2:
+            reparse_submitted = st.form_submit_button("🔄 Re-parse Selected", type="primary", use_container_width=True)
+        
+        st.caption("💡 Tip: Selecting multiple sources increases parsing time")
+    
+    # Handle form submission
+    if reparse_submitted:
+        if not selected_sources:
+            st.error("Please select at least one data source")
+        else:
+            # Get stored data
+            execution_result = st.session_state.get('execution_result')
+            standardized_input = st.session_state.get('standardized_input')
+            
+            if execution_result and standardized_input and data_parser:
+                # Filter data for selected sources
+                selected_source_urls = set(selected_sources)
+                data_for_parsing = [
+                    record for record in execution_result.data
+                    if record.get('_source_url') in selected_source_urls
+                ]
+                
+                console_logger.info(
+                    f"Re-parsing with {len(selected_sources)} source(s): {len(data_for_parsing)} records"
+                )
+                
+                # Update current parsing sources
+                st.session_state['current_parsing_sources'] = selected_sources
+                
+                # Parse with spinner
+                with st.spinner(f"🤖 Re-parsing data from {len(selected_sources)} source(s)..."):
+                    try:
+                        console_logger.log_parsing_start(len(data_for_parsing))
+                        
+                        parser_requirements = {
+                            'data_description': standardized_input.data_description,
+                            'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
+                            'desired_fields': '\n'.join(standardized_input.desired_fields),
+                            'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
+                            'update_frequency': standardized_input.update_frequency
+                        }
+                        
+                        # Create filtered result
+                        from scraping_layer.dynamic_execution.models import ExecutionResult as ExecResult
+                        filtered_source_results = [sr for sr in execution_result.source_results 
+                                                  if sr.success and sr.source_url in selected_source_urls]
+                        
+                        parsing_result = ExecResult(
+                            success=execution_result.success,
+                            data=data_for_parsing,
+                            metadata=execution_result.metadata,
+                            errors=execution_result.errors,
+                            source_results=filtered_source_results,
+                            execution_time_ms=execution_result.execution_time_ms,
+                            scraped_at=execution_result.scraped_at
+                        )
+                        
+                        parsed_response = data_parser.parse_scraped_data(
+                            scraping_result=parsing_result,
+                            user_requirements=parser_requirements
+                        )
+                        
+                        console_logger.log_parsing_complete(parsed_response.metadata)
+                        
+                        # Update session state with new results
+                        st.session_state['last_parsed_response'] = parsed_response
+                        
+                        st.success(f"✅ Re-parsing complete! Used {len(selected_sources)} source(s)")
+                        render_parsed_response(parsed_response)
+                        
+                    except (EmptyDataError, ParsingError) as e:
+                        console_logger.log_workflow_error("Re-parsing", e)
+                        render_error(e)
+                    except Exception as e:
+                        console_logger.log_workflow_error("Re-parsing", e)
+                        st.error(f"❌ Re-parsing failed: {str(e)}")
 
 # ============================================================================
 # API ENDPOINT CREATION SECTION (Outside form submission to handle button clicks)
