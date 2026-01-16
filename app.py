@@ -529,7 +529,7 @@ if form_data['submitted']:
                                                 # Success! Store current source and break
                                                 st.session_state['current_parsing_sources'] = [source_url]
                                                 st.success(f"✅ Successfully parsed {records_count} records from source {source_idx + 1}")
-                                                break
+                                                break  # Exit loop with valid parsed_response
                                             else:
                                                 # No records, try next source
                                                 console_logger.warning(f"Source {source_idx + 1} returned 0 records, trying next source...")
@@ -537,7 +537,9 @@ if form_data['submitted']:
                                                     st.warning(f"⚠️ Source {source_idx + 1} returned 0 records. Trying next source...")
                                                     parsed_response = None  # Reset for next attempt
                                                 else:
+                                                    # Last source also returned 0 - keep the response but warn user
                                                     st.warning(f"⚠️ All sources returned 0 records. You can try re-parsing with multiple sources.")
+                                                    # Keep parsed_response so user can still see the structure
                                             
                                         except (EmptyDataError, ParsingError) as e:
                                             console_logger.log_workflow_error(f"Data Parsing (Source {source_idx + 1})", e)
@@ -626,55 +628,58 @@ if (st.session_state.get('show_reparse_option') and
     st.markdown("""
     <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); 
                 padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem;">
-        <h4 style="color: #fff; margin: 0 0 0.5rem 0;">� Try Different Data Sources</h4>
+        <h4 style="color: #fff; margin: 0 0 0.5rem 0;">🔄 Try Different Data Sources</h4>
         <p style="color: #b8d4e8; margin: 0; font-size: 0.9rem;">
             Not satisfied? Select different source(s) below and re-parse.
         </p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Use a form to prevent page reset on checkbox changes
-    with st.form(key="reparse_form"):
-        st.markdown("**Select data source(s) to parse:**")
-        
-        # Create columns for better layout
-        selected_sources = []
-        for idx, sr in enumerate(available_sources):
-            # Extract domain name for cleaner display
-            from urllib.parse import urlparse
-            domain = urlparse(sr.source_url).netloc.replace('www.', '')
-            
-            col1, col2, col3 = st.columns([0.5, 3, 1])
-            with col1:
-                is_current = sr.source_url in current_sources
-                checked = st.checkbox(
-                    f"Select {domain}", 
-                    value=is_current,
-                    key=f"source_cb_{idx}",
-                    label_visibility="collapsed"
-                )
-                if checked:
-                    selected_sources.append(sr.source_url)
-            with col2:
-                # Show domain name prominently, full URL in smaller text
-                st.markdown(f"**{domain}**")
-                st.caption(sr.source_url)
-            with col3:
-                st.markdown(f"<span style='background:#3d5a80; padding:2px 8px; border-radius:4px; font-size:0.8rem;'>{sr.record_count} records</span>", unsafe_allow_html=True)
-        
-        st.markdown("")  # Spacer
-        
-        # Submit button centered
-        col1, col2, col3 = st.columns([2, 1, 2])
-        with col2:
-            reparse_submitted = st.form_submit_button("🔄 Re-parse Selected", type="primary", use_container_width=True)
-        
-        st.caption("💡 Tip: Selecting multiple sources increases parsing time")
+    st.markdown("**Select data source(s) to parse:**")
     
-    # Handle form submission
-    if reparse_submitted:
+    # Create checkboxes WITHOUT form to avoid full page blur
+    # Read checkbox states directly from session state
+    selected_sources_for_reparse = []
+    for idx, sr in enumerate(available_sources):
+        from urllib.parse import urlparse
+        domain = urlparse(sr.source_url).netloc.replace('www.', '')
+        
+        col1, col2, col3 = st.columns([0.5, 3, 1])
+        with col1:
+            # Default to current sources on first render
+            default_val = sr.source_url in current_sources
+            checked = st.checkbox(
+                f"Select {domain}", 
+                value=default_val,
+                key=f"reparse_cb_{idx}",
+                label_visibility="collapsed"
+            )
+            if checked:
+                selected_sources_for_reparse.append(sr.source_url)
+        with col2:
+            st.markdown(f"**{domain}**")
+            st.caption(sr.source_url)
+        with col3:
+            st.markdown(f"<span style='background:#3d5a80; padding:2px 8px; border-radius:4px; font-size:0.8rem;'>{sr.record_count} records</span>", unsafe_allow_html=True)
+    
+    st.markdown("")  # Spacer
+    st.caption("💡 Tip: Selecting multiple sources increases parsing time")
+    
+    # Re-parse button
+    col1, col2, col3 = st.columns([2, 1, 2])
+    with col2:
+        reparse_clicked = st.button("🔄 Re-parse Selected", type="primary", use_container_width=True, key="reparse_btn")
+    
+    # Create a placeholder for the loading indicator and results
+    reparse_status_placeholder = st.empty()
+    reparse_results_placeholder = st.empty()
+    
+    # Handle button click
+    if reparse_clicked:
+        selected_sources = selected_sources_for_reparse
+        
         if not selected_sources:
-            st.error("Please select at least one data source")
+            reparse_status_placeholder.error("Please select at least one data source")
         else:
             # Get stored data
             execution_result = st.session_state.get('execution_result')
@@ -695,53 +700,62 @@ if (st.session_state.get('show_reparse_option') and
                 # Update current parsing sources
                 st.session_state['current_parsing_sources'] = selected_sources
                 
-                # Parse with spinner
-                with st.spinner(f"🤖 Re-parsing data from {len(selected_sources)} source(s)..."):
-                    try:
-                        console_logger.log_parsing_start(len(data_for_parsing))
-                        
-                        parser_requirements = {
-                            'data_description': standardized_input.data_description,
-                            'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
-                            'desired_fields': '\n'.join(standardized_input.desired_fields),
-                            'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
-                            'update_frequency': standardized_input.update_frequency
-                        }
-                        
-                        # Create filtered result
-                        from scraping_layer.dynamic_execution.models import ExecutionResult as ExecResult
-                        filtered_source_results = [sr for sr in execution_result.source_results 
-                                                  if sr.success and sr.source_url in selected_source_urls]
-                        
-                        parsing_result = ExecResult(
-                            success=execution_result.success,
-                            data=data_for_parsing,
-                            metadata=execution_result.metadata,
-                            errors=execution_result.errors,
-                            source_results=filtered_source_results,
-                            execution_time_ms=execution_result.execution_time_ms,
-                            scraped_at=execution_result.scraped_at
-                        )
-                        
-                        parsed_response = data_parser.parse_scraped_data(
-                            scraping_result=parsing_result,
-                            user_requirements=parser_requirements
-                        )
-                        
-                        console_logger.log_parsing_complete(parsed_response.metadata)
-                        
-                        # Update session state with new results
-                        st.session_state['last_parsed_response'] = parsed_response
-                        
-                        st.success(f"✅ Re-parsing complete! Used {len(selected_sources)} source(s)")
+                # Show loading indicator
+                reparse_status_placeholder.info(f"🔄 Re-parsing data from {len(selected_sources)} source(s)...")
+                
+                try:
+                    console_logger.log_parsing_start(len(data_for_parsing))
+                    
+                    parser_requirements = {
+                        'data_description': standardized_input.data_description,
+                        'data_source': ', '.join(standardized_input.data_sources) if standardized_input.data_sources else '',
+                        'desired_fields': '\n'.join(standardized_input.desired_fields),
+                        'response_structure': json.dumps(standardized_input.response_structure) if standardized_input.response_structure else '',
+                        'update_frequency': standardized_input.update_frequency
+                    }
+                    
+                    # Create filtered result
+                    from scraping_layer.dynamic_execution.models import ExecutionResult as ExecResult
+                    filtered_source_results = [sr for sr in execution_result.source_results 
+                                              if sr.success and sr.source_url in selected_source_urls]
+                    
+                    parsing_result = ExecResult(
+                        success=execution_result.success,
+                        data=data_for_parsing,
+                        metadata=execution_result.metadata,
+                        errors=execution_result.errors,
+                        source_results=filtered_source_results,
+                        execution_time_ms=execution_result.execution_time_ms,
+                        scraped_at=execution_result.scraped_at
+                    )
+                    
+                    # Call AI parser
+                    parsed_response = data_parser.parse_scraped_data(
+                        scraping_result=parsing_result,
+                        user_requirements=parser_requirements
+                    )
+                    
+                    console_logger.log_parsing_complete(parsed_response.metadata)
+                    
+                    # Update session state with new results
+                    st.session_state['last_parsed_response'] = parsed_response
+                    st.session_state['show_create_endpoint'] = True
+                    st.session_state['reparse_completed'] = True
+                    
+                    # Show success message
+                    reparse_status_placeholder.success(f"✅ Re-parsing complete! Parsed {parsed_response.metadata.records_parsed} records from {len(selected_sources)} source(s)")
+                    
+                    # Render the parsed response in the results placeholder
+                    with reparse_results_placeholder.container():
                         render_parsed_response(parsed_response)
-                        
-                    except (EmptyDataError, ParsingError) as e:
-                        console_logger.log_workflow_error("Re-parsing", e)
-                        render_error(e)
-                    except Exception as e:
-                        console_logger.log_workflow_error("Re-parsing", e)
-                        st.error(f"❌ Re-parsing failed: {str(e)}")
+                    
+                except (EmptyDataError, ParsingError) as e:
+                    console_logger.log_workflow_error("Re-parsing", e)
+                    reparse_status_placeholder.empty()
+                    render_error(e)
+                except Exception as e:
+                    console_logger.log_workflow_error("Re-parsing", e)
+                    reparse_status_placeholder.error(f"❌ Re-parsing failed: {str(e)}")
 
 # ============================================================================
 # API ENDPOINT CREATION SECTION (Outside form submission to handle button clicks)
