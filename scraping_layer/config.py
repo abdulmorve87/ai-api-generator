@@ -5,8 +5,46 @@ This module provides minimal configuration for static HTML scraping.
 """
 
 import os
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, Dict
+
+
+# Default headers that mimic a real browser to avoid 403 errors
+# These headers work for most public websites including ESPN, Cricbuzz, Wikipedia, etc.
+DEFAULT_BROWSER_HEADERS: Dict[str, str] = {
+    'User-Agent': (
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+        'AppleWebKit/537.36 (KHTML, like Gecko) '
+        'Chrome/120.0.0.0 Safari/537.36'
+    ),
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Cache-Control': 'max-age=0',
+    'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+}
+
+
+def get_default_headers() -> Dict[str, str]:
+    """Get a copy of the default browser headers."""
+    return DEFAULT_BROWSER_HEADERS.copy()
+
+
+def get_headers_as_python_dict_string() -> str:
+    """Get headers formatted as a Python dict string for code generation."""
+    lines = ["headers = {"]
+    for key, value in DEFAULT_BROWSER_HEADERS.items():
+        lines.append(f"    '{key}': '{value}',")
+    lines.append("}")
+    return "\n".join(lines)
 
 
 @dataclass
@@ -15,19 +53,21 @@ class NetworkConfig:
     request_timeout: int = 30  # seconds
     # Full User-Agent string that Wikipedia and other sites accept
     # Wikipedia requires a descriptive User-Agent per their policy
-    user_agent: str = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36 "
-        "AIAPIGenerator/1.0 (Educational/Research Project; Contact: admin@example.com)"
-    )
+    user_agent: str = DEFAULT_BROWSER_HEADERS['User-Agent']
+    # Complete headers dict for requests
+    default_headers: Dict[str, str] = field(default_factory=get_default_headers)
     
     @classmethod
     def from_env(cls) -> 'NetworkConfig':
         """Create NetworkConfig from environment variables."""
+        headers = get_default_headers()
+        custom_ua = os.getenv('SCRAPING_USER_AGENT')
+        if custom_ua:
+            headers['User-Agent'] = custom_ua
         return cls(
             request_timeout=int(os.getenv('SCRAPING_REQUEST_TIMEOUT', 30)),
-            user_agent=os.getenv('SCRAPING_USER_AGENT', cls.user_agent)
+            user_agent=headers['User-Agent'],
+            default_headers=headers
         )
 
 

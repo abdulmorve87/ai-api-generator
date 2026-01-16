@@ -61,10 +61,8 @@ class StaticScraper(IStaticScraper):
         Returns:
             HTML content as string
         """
-        # Prepare headers
-        request_headers = {
-            'User-Agent': self.config.network.user_agent
-        }
+        # Use full browser headers from config to avoid 403 errors
+        request_headers = self.config.network.default_headers.copy()
         if headers:
             request_headers.update(headers)
         

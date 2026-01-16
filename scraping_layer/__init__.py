@@ -21,7 +21,7 @@ from .interfaces import (
 
 from .engine import ScrapingEngine
 from .static_scraper import StaticScraper
-from .config import ScrapingConfig, get_config, set_config
+from .config import ScrapingConfig, get_config, set_config, DEFAULT_BROWSER_HEADERS, get_default_headers
 
 # Dynamic Execution (AI-Scraping Integration)
 from .dynamic_execution import (
@@ -63,6 +63,8 @@ __all__ = [
     'ScrapingConfig',
     'get_config',
     'set_config',
+    'DEFAULT_BROWSER_HEADERS',
+    'get_default_headers',
     
     # Dynamic Execution (AI-Scraping Integration)
     'DynamicScriptExecutor',
