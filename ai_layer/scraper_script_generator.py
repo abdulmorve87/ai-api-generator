@@ -22,6 +22,14 @@ from ai_layer.script_models import (
 from ai_layer.exceptions import ValidationError
 from scraping_layer.config import ScrapingConfig
 
+# Import console logger for colorful output
+try:
+    from utils.console_logger import logger as console_logger
+    HAS_CONSOLE_LOGGER = True
+except ImportError:
+    HAS_CONSOLE_LOGGER = False
+    console_logger = None
+
 
 class ScraperScriptGenerator:
     """Orchestrates the generation of scraper scripts from form inputs."""
@@ -104,7 +112,8 @@ class ScraperScriptGenerator:
                     messages=messages,
                     model=model,
                     temperature=temperature,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    operation_name="🔧 Generating Scraper Script"
                 )
                 generation_time_ms = int((time.time() - start_time) * 1000)
                 

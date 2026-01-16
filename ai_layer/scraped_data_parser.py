@@ -22,6 +22,14 @@ from ai_layer.parsing_models import (
     DataExtractionError
 )
 
+# Import console logger for colorful output
+try:
+    from utils.console_logger import logger as console_logger
+    HAS_CONSOLE_LOGGER = True
+except ImportError:
+    HAS_CONSOLE_LOGGER = False
+    console_logger = None
+
 
 class ScrapedDataParser:
     """Orchestrates the transformation of scraped data into structured JSON."""
@@ -111,7 +119,8 @@ class ScrapedDataParser:
                     messages=messages,
                     model=model,
                     temperature=temperature,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    operation_name="🧠 Parsing Scraped Data to JSON"
                 )
                 
                 # Step 6: Validate and parse response

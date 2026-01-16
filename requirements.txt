@@ -4,6 +4,7 @@
 streamlit==1.31.0
 requests>=2.31.0
 python-dotenv>=1.0.0  # For loading .env files
+rich>=13.7.0  # Colorful console logging with progress bars
 
 # Universal Scraping Layer Dependencies
 # Core HTTP and HTML parsing

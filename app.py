@@ -5,6 +5,9 @@ from components.form import render_api_form
 from components.results import render_error, render_parsed_response
 from components.input_help import render_input_format_guide, show_validation_summary
 
+# Console Logger for colorful output
+from utils.console_logger import logger as console_logger
+
 # AI Layer imports
 from ai_layer import (
     DeepSeekConfig,
@@ -40,6 +43,7 @@ from api_server import (
 )
 
 import re
+import json
 
 def _extract_url_from_script(script_code: str) -> str:
     """
@@ -165,35 +169,27 @@ standard_script_generator, light_script_generator, executor, formatter, data_par
 def initialize_api_server():
     """Initialize the API Server for serving parsed data as endpoints."""
     try:
-        print("\n" + "="*80)
-        print("INITIALIZING API SERVER...")
-        print("="*80)
+        console_logger.section("API Server Initialization", "🔌")
         
         data_store = DataStore()
-        print(f"✓ DataStore initialized (db: {data_store.db_path})")
+        console_logger.success(f"DataStore initialized (db: {data_store.db_path})")
         
         endpoint_manager = EndpointManager(data_store)
-        print("✓ EndpointManager initialized")
+        console_logger.success("EndpointManager initialized")
         
         api_server = APIServer(data_store)
-        print(f"✓ APIServer created (target port: {api_server.port})")
+        console_logger.success(f"APIServer created (target port: {api_server.port})")
         
         # Start the server
         base_url = api_server.start()
         endpoint_manager.set_base_url(base_url)
         
-        print(f"✓ Server started at {base_url}")
-        print("="*80 + "\n")
+        console_logger.success(f"Server started at {base_url}")
+        console_logger.info(f"API docs available at {base_url}/docs")
         
         return api_server, endpoint_manager, None
     except Exception as e:
-        import traceback
-        print("\n" + "="*80)
-        print("API SERVER INITIALIZATION FAILED")
-        print("="*80)
-        print(f"Error: {str(e)}")
-        print(traceback.format_exc())
-        print("="*80 + "\n")
+        console_logger.error(f"API Server initialization failed: {str(e)}")
         return None, None, e
 
 api_server, endpoint_manager, api_server_error = initialize_api_server()
@@ -314,55 +310,30 @@ if form_data['submitted']:
             script_generator = light_script_generator if form_data.get('use_light_scraping', False) else standard_script_generator
             scraping_mode = "Light Scraping (HTML + AI)" if form_data.get('use_light_scraping', False) else "Traditional Scraping (BeautifulSoup)"
             
+            # Start colorful console logging for the entire workflow
+            console_logger.start_api_generation(form_data)
+            
             # Show loading state
             with st.spinner(f"🤖 AI is generating scraper script using {scraping_mode}..."):
                 try:
-                    # Generate scraper script and print to console
-                    print("\n" + "="*80)
-                    print("GENERATING SCRAPER SCRIPT...")
-                    print("="*80)
-                    print(f"Scraping Mode: {scraping_mode}")
-                    print(f"Data Description: {form_data['data_description']}")
-                    print(f"Data Source: {form_data.get('data_source', 'Not provided - AI will suggest URLs')}")
-                    print(f"Desired Fields: {form_data.get('desired_fields', 'N/A')}")
-                    print("="*80)
+                    # PHASE 1: Script Generation
+                    console_logger.log_script_generation_start(scraping_mode)
                     
                     # Generate script (ONLY AI call now)
                     generated_script = script_generator.generate_script(form_data)
                     
-                    print("\n" + "="*80)
-                    print("SCRAPER SCRIPT GENERATED SUCCESSFULLY")
-                    print("="*80)
-                    print(f"Validation Status: {'✓ VALID' if generated_script.is_valid else '✗ INVALID'}")
-                    print(f"  - Syntax Valid: {generated_script.validation_result.syntax_valid}")
-                    print(f"  - Imports Valid: {generated_script.validation_result.imports_valid}")
-                    print(f"  - No Forbidden Ops: {generated_script.validation_result.no_forbidden_ops}")
-                    print(f"  - Function Signature Valid: {generated_script.validation_result.function_signature_valid}")
-                    
-                    if generated_script.validation_result.errors:
-                        print("\nValidation Errors:")
-                        for error in generated_script.validation_result.errors:
-                            print(f"  - {error}")
+                    # Log script generation results
+                    console_logger.log_script_generation_complete(
+                        generated_script.validation_result,
+                        generated_script.metadata
+                    )
                     
                     print("\n" + "="*80)
-                    print("GENERATED SCRIPT CODE:")
-                    print("="*80)
-                    print(generated_script.script_code)
-                    print("="*80)
-                    print(f"Generation Time: {generated_script.metadata.generation_time_ms}ms")
-                    print(f"Tokens Used: {generated_script.metadata.tokens_used}")
-                    print(f"Model: {generated_script.metadata.model}")
-                    print("="*80 + "\n")
-                    
                     # Show success message on UI
                     st.success(f"✅ Scraper script generated successfully using {scraping_mode}!")
                     
                 except Exception as e:
-                    print("\n" + "="*80)
-                    print("SCRAPER SCRIPT GENERATION FAILED")
-                    print("="*80)
-                    print(f"Error: {str(e)}")
-                    print("="*80 + "\n")
+                    console_logger.log_workflow_error("Script Generation", e)
                     render_error(e)
                     generated_script = None
             
@@ -374,10 +345,6 @@ if form_data['submitted']:
                 
                 try:
                     with st.spinner("🔄 Executing scraper script..."):
-                        print("\n" + "="*80)
-                        print("EXECUTING SCRAPER SCRIPT...")
-                        print("="*80)
-                        
                         # Get target URLs from form or extract from script
                         user_url = form_data.get('data_source', '').strip()
                         script_urls = _extract_all_urls_from_script(generated_script.script_code)
@@ -397,14 +364,13 @@ if form_data['submitted']:
                                 seen_urls.add(script_url)
                         
                         if not urls_to_try:
-                            print("No target URL provided or found in script")
-                            print("="*80 + "\n")
+                            console_logger.warning("No target URL provided or found in script")
                             st.warning("⚠️ No target URL provided. Please enter a data source URL to scrape.")
                             st.info("💡 Tip: The generated script is ready. Add a URL in the 'Data Source' field and submit again.")
                             raise ValueError("No target URL available for scraping")
                         
-                        print(f"URLs to scrape: {urls_to_try}")
-                        print("="*80 + "\n")
+                        # PHASE 2: Data Scraping
+                        console_logger.log_scraping_start(urls_to_try)
                         
                         # Execute against all URLs using multi-source execution
                         # This properly aggregates data from all sources
@@ -414,35 +380,28 @@ if form_data['submitted']:
                                 script_code=generated_script.script_code,
                                 target_urls=urls_to_try
                             )
-                            
-                            # Log individual source results
-                            for source_result in execution_result.source_results:
-                                if source_result.success:
-                                    print(f"--- Trying URL: {source_result.source_url} ---")
-                                    print(f"✓ Success! Got {source_result.record_count} records")
-                                else:
-                                    print(f"--- Trying URL: {source_result.source_url} ---")
-                                    print(f"✗ Failed: {source_result.error}")
                         else:
                             # Single URL - use regular execution
                             target_url = urls_to_try[0]
-                            print(f"--- Trying URL: {target_url} ---")
-                            execution_result = executor.execute_code(
-                                script_code=generated_script.script_code,
-                                target_url=target_url
-                            )
-                            if execution_result.success and execution_result.data:
-                                print(f"✓ Success! Got {len(execution_result.data)} records")
-                            else:
-                                print(f"✗ Failed: {execution_result.errors[0] if execution_result.errors else 'No data returned'}")
+                            # Single URL - use regular execution with progress
+                            with console_logger.scraping_progress([target_url]) as progress:
+                                progress.start_url(target_url, 0)
+                                execution_result = executor.execute_code(
+                                    script_code=generated_script.script_code,
+                                    target_url=target_url
+                                )
+                                if execution_result.success and execution_result.data:
+                                    progress.complete_url(target_url, len(execution_result.data), success=True)
+                                else:
+                                    progress.complete_url(target_url, 0, success=False)
+                                progress.finish(len(execution_result.data) if execution_result.data else 0)
                         
-                        # Print formatted results to console
-                        print("\n" + "="*80)
-                        print("SCRAPING EXECUTION RESULT")
-                        print("="*80)
-                        formatted_output = formatter.format_result(execution_result)
-                        print(formatted_output)
-                        print("="*80 + "\n")
+                        # Log scraping completion
+                        if execution_result and execution_result.success:
+                            console_logger.log_scraping_complete(
+                                len(execution_result.data) if execution_result.data else 0,
+                                execution_result.source_results
+                            )
                     
                     # Show result summary on UI (OUTSIDE spinner context)
                     if execution_result and execution_result.success and execution_result.data:
@@ -488,7 +447,7 @@ if form_data['submitted']:
                             st.write(f"**Scraping Method:** {execution_result.metadata.scraping_method}")
                             st.write(f"**Confidence:** {execution_result.metadata.confidence}")
                         
-                        # NEW: Parse scraped data into structured JSON
+                        # PHASE 3: Parse scraped data into structured JSON
                         if data_parser:
                             st.markdown("---")
                             
@@ -496,12 +455,8 @@ if form_data['submitted']:
                             parsed_response = None
                             with st.spinner("🤖 AI is parsing scraped data into structured JSON..."):
                                 try:
-                                    print("\n" + "="*80)
-                                    print("PARSING SCRAPED DATA...")
-                                    print("="*80)
-                                    print(f"Records to parse: {len(execution_result.data)}")
-                                    print(f"User requirements: {standardized_input.desired_fields}")
-                                    print("="*80)
+                                    # Log parsing start
+                                    console_logger.log_parsing_start(len(execution_result.data))
                                     
                                     # Convert standardized input to parser format
                                     parser_requirements = {
@@ -518,35 +473,15 @@ if form_data['submitted']:
                                         user_requirements=parser_requirements
                                     )
                                     
-                                    print("\n" + "="*80)
-                                    print("DATA PARSED SUCCESSFULLY")
-                                    print("="*80)
-                                    print(f"Records parsed: {parsed_response.metadata.records_parsed}")
-                                    print(f"Fields extracted: {', '.join(parsed_response.metadata.fields_extracted)}")
-                                    print(f"Parsing time: {parsed_response.metadata.parsing_time_ms}ms")
-                                    print("="*80)
-                                    print("PARSED JSON OUTPUT:")
-                                    print("="*80)
-                                    import json
-                                    print(json.dumps(parsed_response.data, indent=2, default=str))
-                                    print("="*80 + "\n")
+                                    # Log parsing completion
+                                    console_logger.log_parsing_complete(parsed_response.metadata)
                                     
                                 except (EmptyDataError, ParsingError) as e:
-                                    print("\n" + "="*80)
-                                    print("DATA PARSING FAILED")
-                                    print("="*80)
-                                    print(f"Error: {str(e)}")
-                                    print("="*80 + "\n")
+                                    console_logger.log_workflow_error("Data Parsing", e)
                                     render_error(e)
                                     parsed_response = None
                                 except Exception as e:
-                                    print("\n" + "="*80)
-                                    print("DATA PARSING FAILED")
-                                    print("="*80)
-                                    print(f"Error: {str(e)}")
-                                    import traceback
-                                    print(traceback.format_exc())
-                                    print("="*80 + "\n")
+                                    console_logger.log_workflow_error("Data Parsing", e)
                                     st.error(f"❌ Data parsing failed: {str(e)}")
                                     parsed_response = None
                             
@@ -559,6 +494,7 @@ if form_data['submitted']:
                                 st.session_state['last_form_data'] = form_data
                                 st.session_state['show_create_endpoint'] = True
                     elif execution_result:
+                        console_logger.error("Scraping failed for all URLs")
                         st.error(f"❌ Scraping failed for all URLs")
                         
                         # Show errors in expander
@@ -568,13 +504,7 @@ if form_data['submitted']:
                                     st.error(error)
                     
                 except Exception as e:
-                        print("\n" + "="*80)
-                        print("SCRIPT EXECUTION FAILED")
-                        print("="*80)
-                        print(f"Error: {str(e)}")
-                        import traceback
-                        print(traceback.format_exc())
-                        print("="*80 + "\n")
+                        console_logger.log_workflow_error("Script Execution", e)
                         st.error(f"❌ Script execution failed: {str(e)}")
 
 # ============================================================================
@@ -606,45 +536,35 @@ if st.session_state.get('show_create_endpoint') and st.session_state.get('last_p
         
         if create_clicked:
             with st.spinner("Creating endpoint..."):
-                print("\n" + "="*80)
-                print("[CreateEndpoint] BUTTON CLICKED - Creating API endpoint...")
-                print("="*80)
-                
                 try:
                     parsed_response = st.session_state['last_parsed_response']
-                    print(f"[CreateEndpoint] Got parsed_response from session state")
-                    print(f"[CreateEndpoint] Data keys: {list(parsed_response.data.keys()) if parsed_response.data else 'None'}")
                     
+                    # PHASE 4: Create API Endpoint (logging handled by endpoint_manager)
                     endpoint_info = endpoint_manager.create_endpoint(
                         parsed_response=parsed_response,
                         description=endpoint_desc
                     )
                     
+                    # Log workflow completion
+                    console_logger.log_workflow_complete()
+                    
                     st.success(f"✅ API Endpoint Created Successfully!")
                     st.code(endpoint_info.access_url, language="text")
                     st.info(f"📊 {endpoint_info.records_count} records available at this endpoint")
-                    
-                    print(f"[CreateEndpoint] ✅ SUCCESS!")
-                    print(f"[CreateEndpoint] Endpoint ID: {endpoint_info.endpoint_id}")
-                    print(f"[CreateEndpoint] Access URL: {endpoint_info.access_url}")
-                    print(f"[CreateEndpoint] Records: {endpoint_info.records_count}")
-                    print("="*80 + "\n")
                     
                     # Clear the create endpoint flag and trigger rerun to refresh sidebar
                     st.session_state['show_create_endpoint'] = False
                     st.rerun()
                     
                 except EndpointCreationError as e:
-                    print(f"[CreateEndpoint] EndpointCreationError: {e}")
+                    console_logger.log_workflow_error("Endpoint Creation", e)
                     st.error(f"❌ Failed to create endpoint: {str(e)}")
                 except Exception as e:
-                    import traceback
-                    print(f"[CreateEndpoint] Unexpected error: {e}")
-                    print(traceback.format_exc())
+                    console_logger.log_workflow_error("Endpoint Creation", e)
                     st.error(f"❌ Error: {str(e)}")
     else:
         st.warning("⚠️ API Server not available. Cannot create endpoints.")
-        print("[CreateEndpoint] endpoint_manager is None")
+        console_logger.warning("API Server not available - cannot create endpoints")
 
 # Footer
 st.markdown("---")

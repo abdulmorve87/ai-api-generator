@@ -18,6 +18,14 @@ from api_server.models import (
 )
 from api_server.data_store import DataStore
 
+# Import console logger for colorful output
+try:
+    from utils.console_logger import logger as console_logger
+    HAS_CONSOLE_LOGGER = True
+except ImportError:
+    HAS_CONSOLE_LOGGER = False
+    console_logger = None
+
 
 class EndpointManager:
     """Manages creation and lifecycle of API endpoints."""
@@ -51,24 +59,38 @@ class EndpointManager:
         Raises:
             EndpointCreationError: If data is invalid or storage fails
         """
+        # Log with colorful console if available
+        if HAS_CONSOLE_LOGGER and console_logger:
+            console_logger.log_endpoint_creation_start(description or "API Endpoint")
+        
         print(f"[EndpointManager] create_endpoint() called")
         
         # Validate input
         if parsed_response is None:
+            error_msg = "ParsedDataResponse cannot be None"
+            if HAS_CONSOLE_LOGGER and console_logger:
+                console_logger.error(error_msg)
             print(f"[EndpointManager] ERROR: ParsedDataResponse is None")
-            raise EndpointCreationError("ParsedDataResponse cannot be None")
+            raise EndpointCreationError(error_msg)
         
         if not parsed_response.data:
+            error_msg = "ParsedDataResponse contains no data"
+            if HAS_CONSOLE_LOGGER and console_logger:
+                console_logger.error(error_msg)
             print(f"[EndpointManager] ERROR: ParsedDataResponse.data is empty")
             raise EndpointCreationError(
-                "ParsedDataResponse contains no data",
+                error_msg,
                 details="The data field is empty or None"
             )
         
+        if HAS_CONSOLE_LOGGER and console_logger:
+            console_logger.info(f"Validated input - data has {len(str(parsed_response.data))} chars")
         print(f"[EndpointManager] Validated input - data has {len(str(parsed_response.data))} chars")
         
         # Generate unique endpoint ID with keywords from description
         endpoint_id = DataStore.generate_endpoint_id(description)
+        if HAS_CONSOLE_LOGGER and console_logger:
+            console_logger.key_value("Endpoint ID", endpoint_id)
         print(f"[EndpointManager] Generated endpoint_id: {endpoint_id}")
         
         # Extract metadata from parsed response
@@ -79,6 +101,8 @@ class EndpointManager:
             fields=parsed_response.metadata.fields_extracted,
             parsing_timestamp=parsed_response.metadata.timestamp
         )
+        if HAS_CONSOLE_LOGGER and console_logger:
+            console_logger.info(f"Created metadata: records={metadata.records_count}, fields={len(metadata.fields)}")
         print(f"[EndpointManager] Created metadata: records={metadata.records_count}, fields={len(metadata.fields)}")
         
         # Create endpoint data
@@ -90,6 +114,8 @@ class EndpointManager:
         )
         
         # Store in database
+        if HAS_CONSOLE_LOGGER and console_logger:
+            console_logger.info("Storing endpoint in database...")
         print(f"[EndpointManager] Storing endpoint in database...")
         self.data_store.store_endpoint(endpoint_data)
         print(f"[EndpointManager] Endpoint stored successfully")
@@ -104,6 +130,10 @@ class EndpointManager:
             created_at=endpoint_data.created_at,
             records_count=metadata.records_count
         )
+        
+        # Log success with colorful console
+        if HAS_CONSOLE_LOGGER and console_logger:
+            console_logger.log_endpoint_creation_complete(result)
         
         print(f"[EndpointManager] ✅ Endpoint created: {access_url}")
         return result

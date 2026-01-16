@@ -24,6 +24,14 @@ from .exceptions import (
 )
 from .sandbox import ScriptSandbox
 
+# Import console logger for colorful output
+try:
+    from utils.console_logger import logger as console_logger
+    HAS_CONSOLE_LOGGER = True
+except ImportError:
+    HAS_CONSOLE_LOGGER = False
+    console_logger = None
+
 
 class DynamicScriptExecutor:
     """Executes AI-generated Python scraper scripts dynamically."""
@@ -455,81 +463,152 @@ class DynamicScriptExecutor:
         total_filtered = 0
         total_duplicates = 0
         
-        # Process each source
-        for idx, url in enumerate(target_urls):
-            self.logger.info(f"[{script_id}] Processing source {idx + 1}/{len(target_urls)}: {url}")
-            source_start = time.time()
-            
-            try:
-                # Execute script for this URL
-                result_data = self._execute_with_timeout(
-                    script_code=script_code,
-                    target_url=url,
-                    script_id=f"{script_id}-{idx}"
-                )
-                
-                source_time_ms = int((time.time() - source_start) * 1000)
-                
-                # Process source result
-                source_result = self._process_source_result(
-                    result_data=result_data,
-                    source_url=url,
-                    execution_time_ms=source_time_ms
-                )
-                
-                source_results.append(source_result)
-                
-                if source_result.success:
-                    # Extract data from result
-                    if isinstance(result_data, dict):
-                        data = result_data.get('data', [])
-                        if isinstance(data, list):
-                            # Add source URL to each record
-                            for record in data:
-                                if isinstance(record, dict):
-                                    record['_source_url'] = url
-                            all_data.extend(data)
+        # Use colorful progress logging if available
+        if HAS_CONSOLE_LOGGER and console_logger:
+            with console_logger.scraping_progress(target_urls) as progress:
+                for idx, url in enumerate(target_urls):
+                    progress.start_url(url, idx)
+                    source_start = time.time()
+                    
+                    try:
+                        # Execute script for this URL
+                        result_data = self._execute_with_timeout(
+                            script_code=script_code,
+                            target_url=url,
+                            script_id=f"{script_id}-{idx}"
+                        )
                         
-                        # Accumulate counts
-                        metadata = result_data.get('metadata', {})
-                        total_filtered += metadata.get('filtered_count', 0)
-                        total_duplicates += metadata.get('duplicate_count', 0)
-                    
-                    self.logger.info(
-                        f"[{script_id}] Source {idx + 1} completed: "
-                        f"{source_result.record_count} records"
-                    )
-                else:
-                    all_errors.append(f"Source {url}: {source_result.error}")
-                    self.logger.warning(
-                        f"[{script_id}] Source {idx + 1} failed: {source_result.error}"
-                    )
-                    
-            except ScriptTimeoutError as e:
-                source_time_ms = int((time.time() - source_start) * 1000)
-                source_results.append(SourceResult(
-                    source_url=url,
-                    success=False,
-                    record_count=0,
-                    error=f"Timeout after {e.timeout_seconds}s",
-                    execution_time_ms=source_time_ms
-                ))
-                all_errors.append(f"Source {url}: Timeout")
-                self.logger.warning(f"[{script_id}] Source {idx + 1} timed out")
-                # Continue with next source
+                        source_time_ms = int((time.time() - source_start) * 1000)
+                        
+                        # Process source result
+                        source_result = self._process_source_result(
+                            result_data=result_data,
+                            source_url=url,
+                            execution_time_ms=source_time_ms
+                        )
+                        
+                        source_results.append(source_result)
+                        
+                        if source_result.success:
+                            # Extract data from result
+                            if isinstance(result_data, dict):
+                                data = result_data.get('data', [])
+                                if isinstance(data, list):
+                                    # Add source URL to each record
+                                    for record in data:
+                                        if isinstance(record, dict):
+                                            record['_source_url'] = url
+                                    all_data.extend(data)
+                                
+                                # Accumulate counts
+                                metadata = result_data.get('metadata', {})
+                                total_filtered += metadata.get('filtered_count', 0)
+                                total_duplicates += metadata.get('duplicate_count', 0)
+                            
+                            progress.complete_url(url, source_result.record_count, success=True)
+                        else:
+                            all_errors.append(f"Source {url}: {source_result.error}")
+                            progress.complete_url(url, 0, success=False)
+                            
+                    except ScriptTimeoutError as e:
+                        source_time_ms = int((time.time() - source_start) * 1000)
+                        source_results.append(SourceResult(
+                            source_url=url,
+                            success=False,
+                            record_count=0,
+                            error=f"Timeout after {e.timeout_seconds}s",
+                            execution_time_ms=source_time_ms
+                        ))
+                        all_errors.append(f"Source {url}: Timeout")
+                        progress.complete_url(url, 0, success=False)
+                        
+                    except Exception as e:
+                        source_time_ms = int((time.time() - source_start) * 1000)
+                        source_results.append(SourceResult(
+                            source_url=url,
+                            success=False,
+                            record_count=0,
+                            error=str(e),
+                            execution_time_ms=source_time_ms
+                        ))
+                        all_errors.append(f"Source {url}: {str(e)}")
+                        progress.complete_url(url, 0, success=False)
                 
-            except Exception as e:
-                source_time_ms = int((time.time() - source_start) * 1000)
-                source_results.append(SourceResult(
-                    source_url=url,
-                    success=False,
-                    record_count=0,
-                    error=str(e),
-                    execution_time_ms=source_time_ms
-                ))
-                all_errors.append(f"Source {url}: {str(e)}")
-                self.logger.warning(f"[{script_id}] Source {idx + 1} error: {str(e)}")
-                # Continue with next source
+                progress.finish(len(all_data))
+        else:
+            # Fallback to original behavior without rich logging
+            for idx, url in enumerate(target_urls):
+                self.logger.info(f"[{script_id}] Processing source {idx + 1}/{len(target_urls)}: {url}")
+                source_start = time.time()
+                
+                try:
+                    # Execute script for this URL
+                    result_data = self._execute_with_timeout(
+                        script_code=script_code,
+                        target_url=url,
+                        script_id=f"{script_id}-{idx}"
+                    )
+                    
+                    source_time_ms = int((time.time() - source_start) * 1000)
+                    
+                    # Process source result
+                    source_result = self._process_source_result(
+                        result_data=result_data,
+                        source_url=url,
+                        execution_time_ms=source_time_ms
+                    )
+                    
+                    source_results.append(source_result)
+                    
+                    if source_result.success:
+                        # Extract data from result
+                        if isinstance(result_data, dict):
+                            data = result_data.get('data', [])
+                            if isinstance(data, list):
+                                # Add source URL to each record
+                                for record in data:
+                                    if isinstance(record, dict):
+                                        record['_source_url'] = url
+                                all_data.extend(data)
+                            
+                            # Accumulate counts
+                            metadata = result_data.get('metadata', {})
+                            total_filtered += metadata.get('filtered_count', 0)
+                            total_duplicates += metadata.get('duplicate_count', 0)
+                        
+                        self.logger.info(
+                            f"[{script_id}] Source {idx + 1} completed: "
+                            f"{source_result.record_count} records"
+                        )
+                    else:
+                        all_errors.append(f"Source {url}: {source_result.error}")
+                        self.logger.warning(
+                            f"[{script_id}] Source {idx + 1} failed: {source_result.error}"
+                        )
+                        
+                except ScriptTimeoutError as e:
+                    source_time_ms = int((time.time() - source_start) * 1000)
+                    source_results.append(SourceResult(
+                        source_url=url,
+                        success=False,
+                        record_count=0,
+                        error=f"Timeout after {e.timeout_seconds}s",
+                        execution_time_ms=source_time_ms
+                    ))
+                    all_errors.append(f"Source {url}: Timeout")
+                    self.logger.warning(f"[{script_id}] Source {idx + 1} timed out")
+                    
+                except Exception as e:
+                    source_time_ms = int((time.time() - source_start) * 1000)
+                    source_results.append(SourceResult(
+                        source_url=url,
+                        success=False,
+                        record_count=0,
+                        error=str(e),
+                        execution_time_ms=source_time_ms
+                    ))
+                    all_errors.append(f"Source {url}: {str(e)}")
+                    self.logger.warning(f"[{script_id}] Source {idx + 1} error: {str(e)}")
         
         # Calculate totals
         execution_time_ms = int((time.time() - start_time) * 1000)

@@ -8,13 +8,21 @@ using the OpenAI-compatible format.
 import requests
 import time
 import random
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Callable
 from ai_layer.exceptions import (
     DeepSeekAPIError,
     DeepSeekAuthError,
     DeepSeekRateLimitError,
     DeepSeekConnectionError
 )
+
+# Import console logger for colorful output
+try:
+    from utils.console_logger import logger as console_logger
+    HAS_CONSOLE_LOGGER = True
+except ImportError:
+    HAS_CONSOLE_LOGGER = False
+    console_logger = None
 
 
 class DeepSeekClient:
@@ -68,7 +76,8 @@ class DeepSeekClient:
         model: str = "deepseek-chat",
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        stream: bool = False
+        stream: bool = False,
+        operation_name: str = "AI Processing"
     ) -> str:
         """
         Send a chat completion request to DeepSeek API.
@@ -79,6 +88,7 @@ class DeepSeekClient:
             temperature: Sampling temperature 0.0 to 1.0 (default: 0.7)
             max_tokens: Maximum tokens in response (default: 2000)
             stream: Whether to stream the response (default: False)
+            operation_name: Name of the operation for logging (default: "AI Processing")
             
         Returns:
             Generated text content
@@ -98,6 +108,124 @@ class DeepSeekClient:
             "stream": stream
         }
         
+        last_exception = None
+        
+        # Use colorful progress logging if available
+        if HAS_CONSOLE_LOGGER and console_logger:
+            with console_logger.ai_progress(operation_name) as progress:
+                progress.update(status="🔄 Connecting to DeepSeek API...")
+                
+                for attempt in range(self.MAX_RETRIES):
+                    try:
+                        progress.update(
+                            description=f"Attempt {attempt + 1}/{self.MAX_RETRIES}",
+                            status="📡 Sending request..."
+                        )
+                        
+                        response = self.session.post(url, json=payload, timeout=self.REQUEST_TIMEOUT)
+                        
+                        # Handle different HTTP status codes
+                        if response.status_code == 200:
+                            progress.update(status="📥 Processing response...")
+                            data = response.json()
+                            content = data['choices'][0]['message']['content']
+                            
+                            # Log token usage if available
+                            usage = data.get('usage', {})
+                            tokens_info = ""
+                            if usage:
+                                tokens_info = f" (Tokens: {usage.get('total_tokens', 'N/A')})"
+                            
+                            progress.complete(f"Response received{tokens_info}")
+                            return content
+                        
+                        elif response.status_code == 401:
+                            progress.update(status="❌ Authentication failed")
+                            raise DeepSeekAuthError(
+                                "Authentication failed. Please verify your DeepSeek API key is correct."
+                            )
+                        
+                        elif response.status_code == 429:
+                            retry_after = int(response.headers.get('Retry-After', 60))
+                            progress.update(status=f"⏳ Rate limited, waiting {retry_after}s...")
+                            raise DeepSeekRateLimitError(
+                                f"Rate limit exceeded. Please wait {retry_after} seconds before trying again.",
+                                retry_after=retry_after
+                            )
+                        
+                        elif response.status_code >= 500:
+                            # Server errors - retry with backoff
+                            error_msg = f"DeepSeek service error (HTTP {response.status_code})"
+                            if attempt < self.MAX_RETRIES - 1:
+                                delay = self._calculate_retry_delay(attempt)
+                                progress.update(status=f"⚠️ Server error, retrying in {delay:.1f}s...")
+                                time.sleep(delay)
+                                continue
+                            progress.update(status="❌ Server error after retries")
+                            raise DeepSeekAPIError(
+                                f"{error_msg}. Please try again in a few moments."
+                            )
+                        
+                        else:
+                            # Other errors
+                            try:
+                                error_data = response.json()
+                                error_msg = error_data.get('error', {}).get('message', 'Unknown error')
+                            except:
+                                error_msg = response.text or f"HTTP {response.status_code}"
+                            
+                            progress.update(status=f"❌ API error: {error_msg[:30]}...")
+                            raise DeepSeekAPIError(f"API error: {error_msg}")
+                    
+                    except requests.exceptions.Timeout:
+                        last_exception = DeepSeekConnectionError(
+                            "Request timed out. Please check your internet connection."
+                        )
+                        if attempt < self.MAX_RETRIES - 1:
+                            delay = self._calculate_retry_delay(attempt)
+                            progress.update(status=f"⏱️ Timeout, retrying in {delay:.1f}s...")
+                            time.sleep(delay)
+                            continue
+                        progress.update(status="❌ Request timed out")
+                    
+                    except requests.exceptions.ConnectionError:
+                        last_exception = DeepSeekConnectionError(
+                            "Unable to connect to DeepSeek API. Please check your internet connection."
+                        )
+                        if attempt < self.MAX_RETRIES - 1:
+                            delay = self._calculate_retry_delay(attempt)
+                            progress.update(status=f"🔌 Connection error, retrying in {delay:.1f}s...")
+                            time.sleep(delay)
+                            continue
+                        progress.update(status="❌ Connection failed")
+                    
+                    except (DeepSeekAuthError, DeepSeekRateLimitError, DeepSeekAPIError):
+                        # Don't retry auth errors, rate limits, or explicit API errors
+                        raise
+                
+                # If we exhausted retries, raise the last exception
+                if last_exception:
+                    raise last_exception
+                
+                raise DeepSeekAPIError("Failed to generate completion after multiple retries")
+        
+        else:
+            # Fallback to original behavior without rich logging
+            return self._generate_completion_simple(
+                url, payload, messages, model, temperature, max_tokens, stream
+            )
+    
+    def _generate_completion_simple(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        stream: bool
+    ) -> str:
+        """Simple completion without rich logging (fallback)."""
         last_exception = None
         
         for attempt in range(self.MAX_RETRIES):
